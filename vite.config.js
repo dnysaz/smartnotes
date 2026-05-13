@@ -17,7 +17,7 @@ export default defineConfig({
           req.on('data', chunk => body += chunk);
           req.on('end', async () => {
             try {
-              const { prompt, model = 'gemini-1.5-flash', imageBase64 } = JSON.parse(body);
+              const { prompt, model = 'gemini-2.5-flash', imageBase64 } = JSON.parse(body);
               if (!prompt) {
                 res.statusCode = 400;
                 res.end(JSON.stringify({ error: 'Missing prompt' }));

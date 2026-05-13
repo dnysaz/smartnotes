@@ -1,0 +1,384 @@
+@import "tailwindcss";
+
+/* Pocket AI - Standard CSS */
+:root {
+  --ios-bg: #F2F2F7;
+  --ios-text: #1D1D1F;
+  --ios-blue: #007AFF;
+  --ios-green: #34C759;
+  --ios-red: #FF3B30;
+  --ios-gray: #8E8E93;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  /* Prevent double-tap to zoom */
+  touch-action: manipulation;
+  /* iOS smooth scrolling */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent auto-zoom on iOS when focusing inputs */
+input, textarea, select {
+  font-size: 16px !important;
+}
+
+body {
+  background-color: var(--ios-bg);
+  color: var(--ios-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  opacity: 1;
+  transition: opacity 0.4s ease-in-out;
+}
+
+.view {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background-color: var(--ios-bg);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 768px) {
+  #settings-view {
+    max-width: 600px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  /* Force hide scan on desktop */
+  #modal-scan {
+    display: none !important;
+  }
+}
+
+#note-view, #todo-view {
+  background-color: white;
+}
+
+.view.active {
+  display: block;
+}
+
+#home-view.active {
+  overflow-y: auto;
+}
+
+/* Paper FAB Button */
+.paper-fab-small {
+  width: 3rem;
+  height: 3rem;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.paper-fab-small:active {
+  transform: scale(0.9);
+}
+
+.paper-fab {
+  width: 4rem;
+  height: 4rem;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s;
+}
+
+.paper-fab:active {
+  transform: scale(0.9);
+}
+
+.paper-dots {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 0.25rem;
+  background-image: radial-gradient(circle, #D2D2D7 1px, transparent 1px);
+  background-size: 8px 8px;
+  background-repeat: repeat-x;
+}
+
+/* Paper Cards */
+.paper-card {
+  background-color: white;
+  border-radius: 1.25rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+}
+
+.paper-card:hover {
+  border-color: var(--color-blue-100);
+}
+
+.paper-card.selected {
+  border-color: var(--ios-blue);
+  background-color: rgba(0, 122, 255, 0.05);
+  transform: scale(0.98);
+}
+
+/* Hover Actions */
+.hover-action {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.25rem;
+  z-index: 20;
+  transition: all 0.2s;
+}
+
+@media (hover: hover) {
+  .hover-action {
+    opacity: 0;
+  }
+  .paper-card:hover .hover-action {
+    opacity: 100;
+  }
+}
+
+@media (hover: none) {
+  .hover-action {
+    opacity: 0.7;
+  }
+}
+
+/* Custom Checkbox iOS Style */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  flex-shrink: 0;
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--ios-blue);
+  border-color: var(--ios-blue);
+  transform: scale(1.1);
+}
+
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  width: 0.6rem;
+  height: 0.3rem;
+  border-left: 2px solid white;
+  border-bottom: 2px solid white;
+  margin-top: -1px;
+}
+
+.todo-checkbox:checked {
+  background-color: var(--ios-green);
+  border-color: var(--ios-green);
+}
+
+.selection-checkbox {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 30;
+  background-color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Modal Animation */
+#action-modal {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#action-modal.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2rem);
+}
+
+#action-modal:not(.hidden) {
+  opacity: 100;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* --- Note Editor Sync (Fix overlapping cursor) --- */
+#note-editor, #note-highlight {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 18px !important;
+    line-height: 1.6 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    text-align: left !important;
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+}
+
+#note-editor {
+    color: transparent !important;
+    caret-color: #1D1D1F !important;
+}
+
+#note-highlight {
+    color: #1D1D1F;
+}
+
+/* --- Utilities --- */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+/* Precise Alignment for Magic Overlay Note Editor */
+#note-editor, #note-highlight {
+  font-family: inherit;
+  font-size: 1.125rem; /* text-lg */
+  line-height: 1.625;   /* leading-relaxed */
+  padding: 0;
+  margin: 0;
+  border: none;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+#note-editor {
+  color: transparent;
+  background: transparent;
+  caret-color: #1D1D1F;
+  outline: none;
+  z-index: 2;
+}
+
+#note-highlight {
+  color: #1D1D1F;
+  z-index: 1;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* iOS-style Toast Notification */
+#toast {
+    transition: opacity 0.25s ease, transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    transform: translateY(-100%);
+}
+
+#toast:not(.hidden) {
+    transform: translateY(0);
+}
+
+#toast.hidden {
+    opacity: 0;
+    transform: translateY(-100%);
+}
+
+#toast-inner {
+    margin-top: env(safe-area-inset-top, 12px);
+}
+
+/* iOS-style Loading Spinner */
+#sync-loader {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(0, 0, 0, 0.02);
+    transition: opacity 0.2s ease;
+}
+
+#sync-loader.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#sync-loader:not(.hidden) {
+    opacity: 1;
+}
+
+/* Bottom Sheet Animation handled by JS (translate-y) */
+
+.dropdown-active {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translateY(0) !important;
+  z-index: 300 !important;
+}
+
+/* Layering Fixes */
+.view {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+}
+
+.view.active {
+  display: block;
+}
+
+#login-view.active {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+header {
+  position: relative;
+  z-index: 50;
+}
+
+#btn-main-action {
+  position: relative;
+  z-index: 100;
+}
+
+#desktop-dropdown {
+  z-index: 200;
+}

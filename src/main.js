@@ -1195,7 +1195,10 @@ async function callGeminiAI(base64Image) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, imageBase64: base64Image.split(',')[1] })
     });
-    if (!res.ok) throw new Error('Gemini API error: ' + res.status);
+    if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error('Gemini API error (' + res.status + '): ' + errBody.slice(0, 200));
+    }
     const data = await res.json();
     let resultText = data.text;
 
@@ -1242,6 +1245,7 @@ captureBtn.addEventListener('click', async () => {
         saveData();
         stopCamera();
     } catch (err) {
+        console.error('[Scan] Error:', err);
         window.showConfirm({
             title: "Processing Error",
             message: "Failed to process image: " + err.message,

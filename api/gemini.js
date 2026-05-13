@@ -21,6 +21,11 @@ export default async function handler(req, res) {
         return res.status(200).end();
     }
 
+    // Simple health check
+    if (req.method === 'GET') {
+        return res.status(200).json({ status: 'ok', endpoint: 'gemini-proxy' });
+    }
+
     // Only allow POST
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method Not Allowed' });
@@ -59,7 +64,10 @@ export default async function handler(req, res) {
         if (!geminiRes.ok) {
             const errText = await geminiRes.text();
             console.error('[/api/gemini] Gemini API error:', errText);
-            return res.status(geminiRes.status).json({ error: 'Gemini API error.' });
+            return res.status(geminiRes.status).json({
+                error: 'Gemini API error.',
+                detail: errText.slice(0, 500)
+            });
         }
 
         const data = await geminiRes.json();

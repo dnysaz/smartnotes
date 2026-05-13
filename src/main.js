@@ -1180,10 +1180,10 @@ function stopCamera() {
 }
 
 async function callGeminiAI(base64Image) {
-    const prompt = `Analyze this image. 
-    1. If it contains a list of items (like a todo list, shopping list, or tasks), extract them.
-    2. If it is more like a narrative text, note, or long paragraph, extract the text.
-    3. Return the result strictly in JSON format as follows:
+    const prompt = `Analyze this image.
+    1. If the text is continuous paragraph, narrative, or long form text without numbered/bulleted items → return as note.
+    2. If the text contains list items (numbered, bulleted, or short separate lines that look like a checklist/shopping list/todo) → return as todo.
+    3. Return strictly JSON only:
     For a list: { "type": "todo", "title": "Scanned List", "items": ["item1", "item2"] }
     For a note: { "type": "note", "content": "extracted text here" }
     Return ONLY the JSON string, no markdown formatting.`;
@@ -1227,7 +1227,18 @@ captureBtn.addEventListener('click', async () => {
 
     try {
         const result = await callGeminiAI(imageData);
-        
+
+        // If AI returned as todo but items look like continuous text → force to note
+        if (result.type === 'todo' && result.items) {
+            const allText = result.items.join(' ');
+            const hasNumbers = /\d/.test(allText);
+            const avgLength = allText.length / result.items.length;
+            if (!hasNumbers && avgLength > 60) {
+                result.type = 'note';
+                result.content = allText;
+            }
+        }
+
         if (result.type === 'todo') {
             createNewTodo();
             const todo = state.todos.find(t => t.id === state.currentTodoId);

@@ -1790,42 +1790,51 @@ window.hideLoading = () => {
     document.getElementById('sync-loader').classList.add('hidden');
 };
 
-window.handleDriveSync = async () => {
-    if (state.isLoggedIn) {
-        const syncStatus = document.getElementById('sync-status-text');
-        const syncLabel = document.getElementById('sync-label');
-        if (syncStatus) syncStatus.classList.remove('hidden');
-        if (syncLabel) syncLabel.textContent = 'Syncing...';
+window.handleDriveSync = (() => {
+    let syncFailed = false;
 
-        const payload = {
-            ...state,
-            financial_records_data: JSON.parse(localStorage.getItem('financial_records_data')) || {}
-        };
-        let success = await syncToDrive(payload);
+    return async () => {
+        if (state.isLoggedIn) {
+            const syncStatus = document.getElementById('sync-status-text');
+            const syncLabel = document.getElementById('sync-label');
+            if (syncStatus) syncStatus.classList.remove('hidden');
 
-        // If sync failed (expired token), re-authenticate and retry
-        if (!success && state.isLoggedIn) {
-            if (syncLabel) syncLabel.textContent = 'Session expired, reconnecting...';
-            try {
-                const resp = await authenticateGoogle();
-                if (resp) {
-                    success = await syncToDrive(payload);
-                }
-            } catch (e) {
-                console.warn('[Drive] Re-auth cancelled');
+            const payload = {
+                ...state,
+                financial_records_data: JSON.parse(localStorage.getItem('financial_records_data')) || {}
+            };
+
+            let success = false;
+            if (syncFailed) {
+                // Previous sync failed → try re-auth first
+                if (syncLabel) syncLabel.textContent = 'Reconnecting...';
+                try {
+                    const resp = await authenticateGoogle();
+                    if (resp) success = await syncToDrive(payload);
+                } catch (e) { console.warn('[Drive] Re-auth cancelled'); }
+                if (success) syncFailed = false;
+            } else {
+                if (syncLabel) syncLabel.textContent = 'Syncing...';
+                success = await syncToDrive(payload);
+                if (!success) syncFailed = true;
             }
-        }
 
-        if (syncStatus) syncStatus.classList.add('hidden');
-        if (syncLabel) syncLabel.textContent = success ? 'Synced' : 'Failed';
-        if (success) window.showToast('Sync complete');
-        else window.showToast('Sync failed. Tap again to retry.');
-    } else {
-        // Guest → login
-        await window.handleGoogleLogin();
-        refreshSettingsUI();
-    }
-};
+            if (syncStatus) syncStatus.classList.add('hidden');
+            if (success) {
+                if (syncLabel) syncLabel.textContent = 'Synced';
+                window.showToast('Sync complete');
+            } else if (syncFailed) {
+                if (syncLabel) syncLabel.textContent = 'Session expired — tap to login';
+            } else {
+                if (syncLabel) syncLabel.textContent = 'Failed';
+                window.showToast('Sync failed');
+            }
+        } else {
+            await window.handleGoogleLogin();
+            refreshSettingsUI();
+        }
+    };
+})();
 
 window.handleGoogleLogin = async () => {
     window.showLoading();

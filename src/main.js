@@ -1188,6 +1188,9 @@ async function startCamera() {
         return;
     }
 
+    // Switch to scan-view FIRST so the video element is visible in DOM
+    switchView('scan-view');
+
     const videoEl = document.getElementById('camera-preview');
     const constraints = [
         { video: { facingMode: 'environment' }, audio: false },
@@ -1208,16 +1211,20 @@ async function startCamera() {
     }
 
     if (!stream) {
-        window.showConfirm({
-            title: "Access Failed",
-            message: "Gagal mengakses kamera: " + (lastError ? lastError.message : "No device found"),
-            alertOnly: true
-        });
+        // Check if running in iOS PWA standalone mode
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isStandalone = window.navigator.standalone === true;
+        const msg = isIOS && isStandalone
+            ? "iOS standalone mode has limited camera support. Open in Safari instead."
+            : "Gagal mengakses kamera: " + (lastError ? lastError.message : "No device found");
+
+        window.showConfirm({ title: "Access Failed", message: msg, alertOnly: true });
         return;
     }
 
     videoEl.srcObject = stream;
-    switchView('scan-view');
+    try { await videoEl.play(); } catch (e) { /* iOS silent autoplay fallback */ }
 }
 
 function stopCamera() {

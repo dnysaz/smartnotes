@@ -49,8 +49,10 @@ export function initFinancial(globalState, switchView, saveGlobalData) {
     }
 
     function saveFinancialData() {
-        allFinancialData[recordId] = transactions;
-        localStorage.setItem('financial_records_data', JSON.stringify(allFinancialData));
+        // Read fresh data to avoid overwriting other records
+        const freshData = JSON.parse(localStorage.getItem('financial_records_data')) || {};
+        freshData[recordId] = transactions;
+        localStorage.setItem('financial_records_data', JSON.stringify(freshData));
     }
 
     window.renderFinancial = () => {
@@ -198,20 +200,20 @@ export function initFinancial(globalState, switchView, saveGlobalData) {
     const amountInput = document.getElementById('fin-amount');
     if (amountInput) {
         amountInput.addEventListener('input', (e) => {
-            let value = e.target.value.replace(/\D/g, '');
-            if (value) {
-                e.target.value = Number(value).toLocaleString('id-ID');
-            } else {
-                e.target.value = '';
-            }
+            // Keep digits and comma for Indonesian decimal format
+            let raw = e.target.value.replace(/[^\d,]/g, '');
+            // Ensure only one comma
+            const commaIdx = raw.indexOf(',');
+            if (commaIdx !== -1) raw = raw.slice(0, commaIdx + 1) + raw.slice(commaIdx + 1).replace(/,/g, '');
+            e.target.value = raw;
         });
     }
 
     // Form Handling
     const handleAddTransaction = (type) => {
         let amountStr = document.getElementById('fin-amount').value;
-        // Hapus semua non-digit kecuali koma desimal, lalu ganti koma dengan titik
-        amountStr = amountStr.replace(/\./g, '').replace(',', '.');
+        // Replace comma with dot for JS number parsing (Indonesian format)
+        amountStr = amountStr.replace(',', '.').replace(/[^\d.]/g, '');
         const amount = Number(amountStr);
         const note = document.getElementById('fin-note').value;
 

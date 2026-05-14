@@ -239,6 +239,12 @@ document.addEventListener('click', (e) => {
     const modals = ['confirm-modal', 'action-modal', 'fin-modal', 'modal-new-financial'];
     if (modals.includes(e.target.id)) {
         e.target.classList.add('hidden');
+        // Clean up confirm-modal listeners if hidden via backdrop
+        if (e.target.id === 'confirm-modal') {
+            document.getElementById('confirm-delete-btn')?.replaceWith(document.getElementById('confirm-delete-btn').cloneNode(true));
+            document.getElementById('cancel-delete-btn')?.replaceWith(document.getElementById('cancel-delete-btn').cloneNode(true));
+            document.getElementById('confirm-extra-btn')?.replaceWith(document.getElementById('confirm-extra-btn').cloneNode(true));
+        }
     }
 });
 
@@ -834,7 +840,7 @@ function renderRecent() {
                         <p class="text-[10px] text-gray-400 mt-0.5 uppercase tracking-wider font-bold">${isNote ? 'Note' : isTodo ? 'List' : 'Financial'} • ${shortDate}</p>
                     </div>
                     <div class="flex items-center gap-1">
-                        <button class="pin-btn p-2 transition-all ${item.pinned ? 'text-orange-400' : 'text-gray-200 hover:text-gray-400'}" data-id="${item.id}" data-type="${item.type}">
+                        <button class="pin-btn p-2 transition-all ${item.pinned ? 'text-blue-500' : 'text-gray-200 hover:text-gray-400'}" data-id="${item.id}" data-type="${item.type}">
                             <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" /></svg>
                         </button>
                         <button class="single-delete-btn p-2 text-gray-200 hover:text-red-500 transition-all" data-id="${item.id}" data-type="${item.type}">

@@ -495,6 +495,20 @@ document.querySelectorAll('.view-toggle').forEach(btn => {
 });
 
 // --- Persistence ---
+function saveLocally() {
+    const notesToSave = state.notes.filter(n => n.content.trim().length > 0 || n.id === state.currentNoteId);
+    const todosToSave = state.todos.filter(t => {
+        const hasContent = t.title.trim().length > 0 || t.items.some(item => item.text.trim().length > 0);
+        return hasContent || t.id === state.currentTodoId;
+    });
+    localStorage.setItem('notes', JSON.stringify(notesToSave));
+    localStorage.setItem('todos', JSON.stringify(todosToSave));
+    localStorage.setItem('financialRecords', JSON.stringify(state.financialRecords));
+    localStorage.setItem('trash', JSON.stringify(state.trash));
+    updateTrashBadge();
+    showSavedStatus();
+}
+
 function saveData() {
     // Only filter for storage, don't modify state.notes/todos in-place
     // so we don't lose the reference to the item currently being edited
@@ -1808,11 +1822,10 @@ window.handleGoogleLogin = async () => {
         if (cloudData) {
             console.log('[Drive] Found existing backup, merging with local...');
             mergeCloudData(cloudData);
-        } else {
-            console.log('[Drive] No cloud backup found, creating new...');
         }
 
-        // Always push merged data back to Drive
+        // Push merged data to Drive — withTokenRetry handles expired tokens
+        // If sync fails (e.g., Drive unreachable), data still saves locally via saveData()
         saveData();
 
         // Start real-time polling

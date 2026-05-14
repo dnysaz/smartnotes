@@ -79,7 +79,8 @@ export function authenticateGoogle() {
                 reject(resp);
                 return;
             }
-            // Success! Token is automatically handled by gapi.client
+            // Explicitly set token so gapi.client uses it for all Drive calls
+            gapi.client.setToken(resp);
             resolve(resp);
         };
 
@@ -87,10 +88,60 @@ export function authenticateGoogle() {
             // Prompt for consent
             tokenClient.requestAccessToken({ prompt: 'consent' });
         } else {
-            // Re-use token
+            // Re-use token silently
             tokenClient.requestAccessToken({ prompt: '' });
         }
     });
+}
+
+/**
+ * Silently refresh the OAuth token before Drive API calls.
+ * Google access tokens expire after ~1 hour — this ensures we always
+ * have a fresh one without showing UI to the user.
+ */
+async function ensureToken() {
+    return new Promise((resolve) => {
+        // If already have a valid token, skip
+        const currentToken = gapi.client.getToken();
+        if (currentToken && currentToken.expires_at) {
+            const expiresIn = currentToken.expires_at - Date.now();
+            if (expiresIn > 300000) { // 5 min buffer
+                resolve(true);
+                return;
+            }
+        }
+
+        tokenClient.callback = (resp) => {
+            if (resp.error) {
+                console.warn('[Drive] Silent token refresh failed:', resp.error);
+                resolve(false);
+                return;
+            }
+            gapi.client.setToken(resp);
+            resolve(true);
+        };
+        // prompt: '' = use existing grant silently, no UI
+        tokenClient.requestAccessToken({ prompt: '' });
+    });
+}
+
+/**
+ * Wrapper: retry a Drive API call once if it fails with 403 (expired token).
+ * Tries to refresh the token and retries.
+ */
+async function withTokenRetry(fn) {
+    try {
+        return await fn();
+    } catch (err) {
+        if (err && (err.status === 403 || (err.result && err.result.error && err.result.error.code === 403))) {
+            console.log('[Drive] 403 detected, refreshing token and retrying...');
+            const refreshed = await ensureToken();
+            if (refreshed) {
+                return await fn();
+            }
+        }
+        throw err;
+    }
 }
 
 /**
@@ -98,66 +149,68 @@ export function authenticateGoogle() {
  */
 export async function syncToDrive(data) {
     try {
-        const folderId = await getOrCreateAppFolder();
-        const fileName = 'smart_note_backup.json';
-        
-        // Build payload termasuk financial_records_data
-        const payload = {
-            notes: data.notes || [],
-            todos: data.todos || [],
-            financialRecords: data.financialRecords || [],
-            financial_records_data: data.financial_records_data || {},
-            trash: data.trash || [],
-            exportDate: new Date().toISOString()
-        };
+        return await withTokenRetry(async () => {
+            const folderId = await getOrCreateAppFolder();
+            const fileName = 'smart_note_backup.json';
 
-        // 1. Check if file exists in the specific folder
-        const response = await gapi.client.drive.files.list({
-            q: `name = '${fileName}' and '${folderId}' in parents and trashed = false`,
-            fields: 'files(id, name)',
-        });
+            // Build payload termasuk financial_records_data
+            const payload = {
+                notes: data.notes || [],
+                todos: data.todos || [],
+                financialRecords: data.financialRecords || [],
+                financial_records_data: data.financial_records_data || {},
+                trash: data.trash || [],
+                exportDate: new Date().toISOString()
+            };
 
-        const files = response.result.files;
-        const fileContent = JSON.stringify(payload);
-        const metadata = {
-            name: fileName,
-            mimeType: 'application/json',
-            parents: [folderId],
-        };
-
-        if (files.length > 0) {
-            // 1. Update the first file
-            const fileId = files[0].id;
-            await gapi.client.request({
-                path: `/upload/drive/v3/files/${fileId}`,
-                method: 'PATCH',
-                params: { uploadType: 'media' },
-                body: fileContent,
+            // 1. Check if file exists in the specific folder
+            const response = await gapi.client.drive.files.list({
+                q: `name = '${fileName}' and '${folderId}' in parents and trashed = false`,
+                fields: 'files(id, name)',
             });
-            console.log('[Drive] Sync: Update success in Workspace folder');
 
-            // 2. Clean up duplicates (delete all other files with the same name)
-            if (files.length > 1) {
-                console.log(`[Drive] Sync: Cleaning up ${files.length - 1} duplicates...`);
-                for (let i = 1; i < files.length; i++) {
-                    await gapi.client.drive.files.delete({
-                        fileId: files[i].id,
-                    });
+            const files = response.result.files;
+            const fileContent = JSON.stringify(payload);
+            const metadata = {
+                name: fileName,
+                mimeType: 'application/json',
+                parents: [folderId],
+            };
+
+            if (files.length > 0) {
+                // 1. Update the first file
+                const fileId = files[0].id;
+                await gapi.client.request({
+                    path: `/upload/drive/v3/files/${fileId}`,
+                    method: 'PATCH',
+                    params: { uploadType: 'media' },
+                    body: fileContent,
+                });
+                console.log('[Drive] Sync: Update success in Workspace folder');
+
+                // 2. Clean up duplicates (delete all other files with the same name)
+                if (files.length > 1) {
+                    console.log(`[Drive] Sync: Cleaning up ${files.length - 1} duplicates...`);
+                    for (let i = 1; i < files.length; i++) {
+                        await gapi.client.drive.files.delete({
+                            fileId: files[i].id,
+                        });
+                    }
+                    console.log('[Drive] Sync: Duplicate cleanup complete');
                 }
-                console.log('[Drive] Sync: Duplicate cleanup complete');
+            } else {
+                // Create new file
+                await gapi.client.request({
+                    path: '/upload/drive/v3/files',
+                    method: 'POST',
+                    params: { uploadType: 'multipart' },
+                    body: `--foo\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--foo\r\nContent-Type: application/json\r\n\r\n${fileContent}\r\n--foo--`,
+                    headers: { 'Content-Type': 'multipart/related; boundary=foo' }
+                });
+                console.log('[Drive] Sync: Created new file in Workspace folder');
             }
-        } else {
-            // Create new file
-            await gapi.client.request({
-                path: '/upload/drive/v3/files',
-                method: 'POST',
-                params: { uploadType: 'multipart' },
-                body: `--foo\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--foo\r\nContent-Type: application/json\r\n\r\n${fileContent}\r\n--foo--`,
-                headers: { 'Content-Type': 'multipart/related; boundary=foo' }
-            });
-            console.log('[Drive] Sync: Created new file in Workspace folder');
-        }
-        return true;
+            return true;
+        });
     } catch (err) {
         console.error('[Drive] Sync Error:', err);
         return false;
@@ -169,22 +222,24 @@ export async function syncToDrive(data) {
  */
 export async function loadFromDrive() {
     try {
-        const folderId = await getOrCreateAppFolder();
-        const response = await gapi.client.drive.files.list({
-            q: `name = 'smart_note_backup.json' and '${folderId}' in parents and trashed = false`,
-            fields: 'files(id, name)',
-        });
+        return await withTokenRetry(async () => {
+            const folderId = await getOrCreateAppFolder();
+            const response = await gapi.client.drive.files.list({
+                q: `name = 'smart_note_backup.json' and '${folderId}' in parents and trashed = false`,
+                fields: 'files(id, name)',
+            });
 
-        const files = response.result.files;
-        if (files.length === 0) return null;
+            const files = response.result.files;
+            if (files.length === 0) return null;
 
-        const fileId = files[0].id;
-        const file = await gapi.client.drive.files.get({
-            fileId: fileId,
-            alt: 'media',
+            const fileId = files[0].id;
+            const file = await gapi.client.drive.files.get({
+                fileId: fileId,
+                alt: 'media',
+            });
+
+            return typeof file.result === 'string' ? JSON.parse(file.result) : file.result;
         });
-        
-        return typeof file.result === 'string' ? JSON.parse(file.result) : file.result;
     } catch (err) {
         console.error('[Drive] Load Error:', err);
         return null;
@@ -197,16 +252,18 @@ export async function loadFromDrive() {
  */
 export async function checkDriveForUpdates() {
     try {
-        const folderId = await getOrCreateAppFolder();
-        const response = await gapi.client.drive.files.list({
-            q: `name = 'smart_note_backup.json' and '${folderId}' in parents and trashed = false`,
-            fields: 'files(id, name, modifiedTime)',
+        return await withTokenRetry(async () => {
+            const folderId = await getOrCreateAppFolder();
+            const response = await gapi.client.drive.files.list({
+                q: `name = 'smart_note_backup.json' and '${folderId}' in parents and trashed = false`,
+                fields: 'files(id, name, modifiedTime)',
+            });
+
+            const files = response.result.files;
+            if (files.length === 0) return null;
+
+            return files[0].modifiedTime || null;
         });
-
-        const files = response.result.files;
-        if (files.length === 0) return null;
-
-        return files[0].modifiedTime || null;
     } catch (err) {
         console.error('[Drive] Check update error:', err);
         return null;

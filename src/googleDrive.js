@@ -3,6 +3,7 @@ import { env } from './env.js';
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
+let lastRefreshAttempt = 0;
 
 export async function initDriveSync() {
     return new Promise((resolve) => {
@@ -27,20 +28,15 @@ export async function initDriveSync() {
 
 async function getOrCreateAppFolder() {
     const folderName = 'Smart Note Workspace';
-
     const response = await gapi.client.drive.files.list({
         q: `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
         fields: 'files(id, name)',
     });
-
     const folders = response.result.files;
-    if (folders.length > 0) {
-        return folders[0].id;
-    }
+    if (folders.length > 0) return folders[0].id;
 
-    const folderMetadata = { name: folderName, mimeType: 'application/vnd.google-apps.folder' };
     const createResponse = await gapi.client.drive.files.create({
-        resource: folderMetadata,
+        resource: { name: folderName, mimeType: 'application/vnd.google-apps.folder' },
         fields: 'id',
     });
     return createResponse.result.id;
@@ -50,7 +46,7 @@ function checkAllInited(resolve) {
     if (gapiInited && gisInited) resolve(true);
 }
 
-/** Explicit user login — always consent (popup). Only called on button click. */
+/** User-initiated login — always uses consent popup */
 export function authenticateGoogle() {
     return new Promise((resolve, reject) => {
         tokenClient.callback = async (resp) => {
@@ -62,22 +58,53 @@ export function authenticateGoogle() {
     });
 }
 
-// --- 403 handling: all silent, no auto-refresh (prevents PWA redirects) ---
+// --- Auth helpers ---
+
+function tokenFresh() {
+    const t = gapi.client.getToken();
+    return t && t.expires_at && t.expires_at - Date.now() > 300000; // >5min
+}
+
+/** Silent refresh (prompt=none → iframe). Works in Safari, fails silently in PWA. */
+export function trySilentRefresh() {
+    // Cooldown: don't retry for 5 minutes after last attempt
+    if (Date.now() - lastRefreshAttempt < 300000) return Promise.resolve(false);
+    lastRefreshAttempt = Date.now();
+
+    return new Promise((resolve) => {
+        tokenClient.callback = (resp) => {
+            if (resp.error) { resolve(false); return; }
+            gapi.client.setToken(resp);
+            resolve(true);
+        };
+        tokenClient.requestAccessToken({ prompt: '' });
+    });
+}
+
+// --- 403 wrappers ---
 
 class DriveAuthError extends Error {
     constructor() { super('Drive auth failed'); this.name = 'DriveAuthError'; }
 }
 
 function is403(err) {
-    return err && (err.status === 403 || (err.result && err.result.error && err.result.error.code === 403));
+    return err && (err.status === 403 || (err.result?.error?.code === 403));
 }
 
+/** Background ops (polling, load) — silent skip on 403 */
 async function skipOn403(fn) {
-    try {
-        return await fn();
-    } catch (err) {
-        if (is403(err)) throw new DriveAuthError();
-        throw err;
+    try { return await fn(); }
+    catch (err) { if (is403(err)) throw new DriveAuthError(); throw err; }
+}
+
+/** User data sync — try silent refresh on 403 before giving up */
+async function withTokenRefresh(fn) {
+    try { return await fn(); }
+    catch (err) {
+        if (!is403(err)) throw err;
+        const refreshed = await trySilentRefresh();
+        if (refreshed) return await fn();
+        throw new DriveAuthError();
     }
 }
 
@@ -85,7 +112,7 @@ async function skipOn403(fn) {
 
 export async function syncToDrive(data) {
     try {
-        return await skipOn403(async () => {
+        return await withTokenRefresh(async () => {
             const folderId = await getOrCreateAppFolder();
             const fileName = 'smart_note_backup.json';
 
@@ -97,8 +124,6 @@ export async function syncToDrive(data) {
                 trash: data.trash || [],
                 exportDate: new Date().toISOString()
             };
-
-            // Dedup: ensure trashed items never appear in notes/todos
             const trashedIds = new Set((data.trash || []).map(t => t.id));
             if (trashedIds.size > 0) {
                 payload.notes = payload.notes.filter(n => !trashedIds.has(n.id));
@@ -118,20 +143,14 @@ export async function syncToDrive(data) {
                 const fileId = files[0].id;
                 await gapi.client.request({
                     path: `/upload/drive/v3/files/${fileId}`,
-                    method: 'PATCH',
-                    params: { uploadType: 'media' },
-                    body: fileContent,
+                    method: 'PATCH', params: { uploadType: 'media' }, body: fileContent,
                 });
-                if (files.length > 1) {
-                    for (let i = 1; i < files.length; i++) {
-                        await gapi.client.drive.files.delete({ fileId: files[i].id });
-                    }
-                }
+                for (let i = 1; i < files.length; i++)
+                    await gapi.client.drive.files.delete({ fileId: files[i].id });
             } else {
                 await gapi.client.request({
                     path: '/upload/drive/v3/files',
-                    method: 'POST',
-                    params: { uploadType: 'multipart' },
+                    method: 'POST', params: { uploadType: 'multipart' },
                     body: `--foo\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--foo\r\nContent-Type: application/json\r\n\r\n${fileContent}\r\n--foo--`,
                     headers: { 'Content-Type': 'multipart/related; boundary=foo' }
                 });
@@ -153,12 +172,9 @@ export async function loadFromDrive() {
                 q: `name = 'smart_note_backup.json' and '${folderId}' in parents and trashed = false`,
                 fields: 'files(id, name)',
             });
-
             const files = response.result.files;
             if (files.length === 0) return null;
-
-            const fileId = files[0].id;
-            const file = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+            const file = await gapi.client.drive.files.get({ fileId: files[0].id, alt: 'media' });
             return typeof file.result === 'string' ? JSON.parse(file.result) : file.result;
         });
     } catch (err) {
@@ -176,7 +192,6 @@ export async function checkDriveForUpdates() {
                 q: `name = 'smart_note_backup.json' and '${folderId}' in parents and trashed = false`,
                 fields: 'files(id, name, modifiedTime)',
             });
-
             const files = response.result.files;
             if (files.length === 0) return null;
             return files[0].modifiedTime || null;

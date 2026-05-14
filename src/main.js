@@ -1,7 +1,7 @@
 import './style.css';
 import { initFinancial } from './financial.js';
 import { checkEnv } from './env.js';
-import { initDriveSync, authenticateGoogle, syncToDrive, loadFromDrive, checkDriveForUpdates } from './googleDrive.js';
+import { initDriveSync, authenticateGoogle, syncToDrive, loadFromDrive, checkDriveForUpdates, trySilentRefresh } from './googleDrive.js';
 
 // --- View Templates ---
 import { authView }      from './views/auth.view.js';
@@ -119,6 +119,8 @@ function startDrivePolling() {
     stopDrivePolling();
     drivePollTimer = setInterval(async () => {
         if (!state.isLoggedIn) return;
+        // Try silent refresh if token stale — works in Safari, fails silently in PWA
+        trySilentRefresh();
         const modifiedTime = await checkDriveForUpdates();
         if (modifiedTime && modifiedTime !== driveLastModified) {
             driveLastModified = modifiedTime;

@@ -63,7 +63,7 @@ export const noteView = `
         <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div class="w-72 h-96 border-2 border-white/30 rounded-3xl"></div>
         </div>
-        <div id="scan-status" class="absolute bottom-32 text-white font-medium text-center w-full px-6"></div>
+        <div id="scan-status" class="absolute bottom-36 left-1/2 -translate-x-1/2 bg-black/40 backdrop-blur-md text-white text-base font-medium px-6 py-3 rounded-full whitespace-nowrap hidden"></div>
         <button id="capture-btn" class="absolute bottom-10 w-20 h-20 rounded-full border-4 border-white/50 bg-white flex items-center justify-center"></button>
     </div>
 </section>

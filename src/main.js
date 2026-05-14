@@ -1225,6 +1225,13 @@ async function startCamera() {
 
     videoEl.srcObject = stream;
     try { await videoEl.play(); } catch (e) { /* iOS silent autoplay fallback */ }
+
+    // Show "ready" indicator, update to "processing" on capture
+    const scanStatus = document.getElementById('scan-status');
+    if (scanStatus) {
+        scanStatus.textContent = 'Camera ready — tap to capture';
+        scanStatus.classList.remove('hidden');
+    }
 }
 
 function stopCamera() {
@@ -1233,6 +1240,8 @@ function stopCamera() {
         stream = null;
         if (video) video.srcObject = null;
     }
+    const scanStatus = document.getElementById('scan-status');
+    if (scanStatus) scanStatus.classList.add('hidden');
 }
 
 async function callGeminiAI(base64Image) {
@@ -1277,7 +1286,7 @@ captureBtn.addEventListener('click', async () => {
     
     const imageData = canvas.toDataURL('image/jpeg');
     
-    document.getElementById('scan-status').textContent = 'AI is analyzing the image...';
+    document.getElementById('scan-status').textContent = 'AI is processing image ...';
     captureBtn.disabled = true;
     captureBtn.style.opacity = '0.5';
 
@@ -1335,7 +1344,11 @@ captureBtn.addEventListener('click', async () => {
     } finally {
         captureBtn.disabled = false;
         captureBtn.style.opacity = '1';
-        document.getElementById('scan-status').textContent = '';
+        const scanStatus = document.getElementById('scan-status');
+        if (scanStatus) {
+            scanStatus.textContent = '';
+            scanStatus.classList.add('hidden');
+        }
     }
 });
 

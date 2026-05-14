@@ -26,7 +26,7 @@ export async function initDriveSync() {
         // Load GIS
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: env.GOOGLE_CLIENT_ID,
-            scope: 'https://www.googleapis.com/auth/drive.file', // Visible files scope
+            scope: 'https://www.googleapis.com/auth/drive.file email', // Visible files scope + email
             callback: '', // defined at request time
         });
         gisInited = true;
@@ -187,6 +187,28 @@ export async function loadFromDrive() {
         return typeof file.result === 'string' ? JSON.parse(file.result) : file.result;
     } catch (err) {
         console.error('[Drive] Load Error:', err);
+        return null;
+    }
+}
+
+/**
+ * Check if Drive backup has been modified since last check
+ * Returns the modifiedTime string if updated, null if not
+ */
+export async function checkDriveForUpdates() {
+    try {
+        const folderId = await getOrCreateAppFolder();
+        const response = await gapi.client.drive.files.list({
+            q: `name = 'smart_note_backup.json' and '${folderId}' in parents and trashed = false`,
+            fields: 'files(id, name, modifiedTime)',
+        });
+
+        const files = response.result.files;
+        if (files.length === 0) return null;
+
+        return files[0].modifiedTime || null;
+    } catch (err) {
+        console.error('[Drive] Check update error:', err);
         return null;
     }
 }

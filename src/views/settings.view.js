@@ -47,25 +47,27 @@ export const settingsView = (state) => `
             <div class="mb-8">
                 <p class="text-xs font-bold text-gray-500 px-4 mb-3 uppercase tracking-wider">Cloud Services</p>
                 <div class="bg-white rounded-3xl overflow-hidden border border-gray-100 divide-y divide-gray-50">
-                    <div class="flex items-center justify-between p-5">
+                    <button onclick="window.handleDriveSync()" class="w-full flex items-center justify-between p-5 active:bg-blue-50 transition-all text-left">
                         <div class="flex items-center gap-4">
                             <div class="w-10 h-10 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center">
                                 <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"></path></svg>
                             </div>
                             <div>
                                 <p class="font-bold text-[#1D1D1F]">Google Drive Sync</p>
-                                <p class="text-xs text-gray-400">
+                                <p id="sync-email-text" class="text-xs text-gray-400">
                                     ${state.isLoggedIn ? 'Connected as ' + (state.userProfile?.email || 'User') : 'Not Connected'}
                                 </p>
+                                <p id="sync-status-text" class="text-[10px] text-blue-500 font-semibold hidden mt-0.5">Syncing...</p>
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full ${state.isLoggedIn ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}"></span>
-                            <span class="text-[10px] font-bold ${state.isLoggedIn ? 'text-green-500' : 'text-gray-400'} uppercase">
+                            <span id="sync-dot" class="w-2 h-2 rounded-full ${state.isLoggedIn ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}"></span>
+                            <span id="sync-label" class="text-[10px] font-bold ${state.isLoggedIn ? 'text-green-500' : 'text-gray-400'} uppercase">
                                 ${state.isLoggedIn ? 'Active' : 'Offline'}
                             </span>
+                            <svg width="16" height="16" class="text-gray-300 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                         </div>
-                    </div>
+                    </button>
                 </div>
             </div>
 

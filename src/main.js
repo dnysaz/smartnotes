@@ -1,7 +1,7 @@
 import './style.css';
 import { initFinancial } from './financial.js';
 import { checkEnv } from './env.js';
-import { initDriveSync, authenticateGoogle, syncToDrive, loadFromDrive } from './googleDrive.js';
+import { initDriveSync, authenticateGoogle, syncToDrive, loadFromDrive, checkDriveForUpdates } from './googleDrive.js';
 
 // --- View Templates ---
 import { authView }      from './views/auth.view.js';
@@ -110,6 +110,35 @@ const initGapiWithRetry = () => {
     }
 };
 initGapiWithRetry();
+
+// Real-time sync polling (checks for Drive changes every 30s)
+let driveLastModified = null;
+let drivePollTimer = null;
+
+function startDrivePolling() {
+    stopDrivePolling();
+    drivePollTimer = setInterval(async () => {
+        if (!state.isLoggedIn) return;
+        const modifiedTime = await checkDriveForUpdates();
+        if (modifiedTime && modifiedTime !== driveLastModified) {
+            driveLastModified = modifiedTime;
+            const cloudData = await loadFromDrive();
+            if (cloudData) {
+                mergeCloudData(cloudData);
+                saveData();
+                renderRecent();
+                console.log('[Drive] Real-time sync: merged changes');
+            }
+        }
+    }, 30000);
+}
+
+function stopDrivePolling() {
+    if (drivePollTimer) {
+        clearInterval(drivePollTimer);
+        drivePollTimer = null;
+    }
+}
 
 // --- State Management ---
 let state;
@@ -1246,11 +1275,24 @@ captureBtn.addEventListener('click', async () => {
         }
 
         if (result.type === 'todo') {
-            createNewTodo();
-            const todo = state.todos.find(t => t.id === state.currentTodoId);
-            todo.title = result.title || "AI Scanned Result";
-            todo.items = (result.items || []).map(text => ({ text, done: false }));
+            const id = Date.now().toString();
+            const newTodo = {
+                id,
+                title: result.title || 'AI Scanned List',
+                items: (result.items || []).map(text => ({ text, done: false })),
+                timestamp: new Date().toISOString(),
+                pinned: false
+            };
+            state.todos.unshift(newTodo);
+            state.currentTodoId = id;
             renderTodoView();
+            switchView('todo-view');
+            setTimeout(() => {
+                const firstInput = document.querySelector('.todo-item-input');
+                if (firstInput) firstInput.focus();
+            }, 100);
+            saveData();
+            stopCamera();
         } else {
             createNewNote();
             const note = state.notes.find(n => n.id === state.currentNoteId);
@@ -1707,6 +1749,31 @@ window.hideLoading = () => {
     document.getElementById('sync-loader').classList.add('hidden');
 };
 
+window.handleDriveSync = async () => {
+    if (state.isLoggedIn) {
+        // Manual sync
+        const syncStatus = document.getElementById('sync-status-text');
+        const syncLabel = document.getElementById('sync-label');
+        if (syncStatus) syncStatus.classList.remove('hidden');
+        if (syncLabel) syncLabel.textContent = 'Syncing...';
+
+        const payload = {
+            ...state,
+            financial_records_data: JSON.parse(localStorage.getItem('financial_records_data')) || {}
+        };
+        const success = await syncToDrive(payload);
+
+        if (syncStatus) syncStatus.classList.add('hidden');
+        if (syncLabel) syncLabel.textContent = success ? 'Synced' : 'Failed';
+        if (success) window.showToast('Sync complete');
+        else window.showToast('Sync failed');
+    } else {
+        // Guest → login
+        await window.handleGoogleLogin();
+        refreshSettingsUI();
+    }
+};
+
 window.handleGoogleLogin = async () => {
     window.showLoading();
     try {
@@ -1716,10 +1783,19 @@ window.handleGoogleLogin = async () => {
         // Update state
         state.isLoggedIn = true;
         state.hasSkippedLogin = false;
-        
+
+        // Extract email from Google id_token
+        let userEmail = 'Google User';
+        try {
+            if (resp && resp.id_token) {
+                const payload = JSON.parse(atob(resp.id_token.split('.')[1]));
+                userEmail = payload.email || userEmail;
+            }
+        } catch (e) { /* ignore */ }
+
         state.userProfile = {
             name: "Smart Note User",
-            email: "Synced with Google"
+            email: userEmail
         };
         
         localStorage.setItem('isLoggedIn', 'true');
@@ -1737,6 +1813,10 @@ window.handleGoogleLogin = async () => {
 
         // Always push merged data back to Drive
         saveData();
+
+        // Start real-time polling
+        driveLastModified = new Date().toISOString();
+        startDrivePolling();
 
         refreshSettingsUI();
         switchView('home-view');
@@ -1780,12 +1860,16 @@ window.skipLogin = () => {
 };
 
 window.handleSignOut = () => {
+    const isGuest = !state.isLoggedIn && state.hasSkippedLogin;
     window.showConfirm({
         title: "Sign Out",
-        message: "Are you sure you want to sign out? Data on this device will be cleared, but your cloud backup remains safe.",
+        message: isGuest
+            ? "You are in guest mode — all local data will be permanently deleted. Sign out?"
+            : "Data on this device will be cleared, but your cloud backup remains safe.",
         confirmText: "Sign Out",
         isDestructive: true,
         onConfirm: () => {
+            stopDrivePolling();
             clearAllLocalData();
             state.isLoggedIn = false;
             state.hasSkippedLogin = false;

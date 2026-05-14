@@ -1291,9 +1291,9 @@ captureBtn.addEventListener('click', async () => {
             renderTodoView();
             switchView('todo-view');
             setTimeout(() => {
-                const firstInput = document.querySelector('.todo-item-input');
+                const firstInput = document.querySelector('#todo-list-items textarea');
                 if (firstInput) firstInput.focus();
-            }, 100);
+            }, 200);
         } else {
             createNewNote();
             const note = state.notes.find(n => n.id === state.currentNoteId);

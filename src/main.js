@@ -1276,10 +1276,13 @@ captureBtn.addEventListener('click', async () => {
 
         if (result.type === 'todo') {
             const id = Date.now().toString();
+            const scannedItems = (result.items || []).map(text => ({ text, done: false }));
+            // Prepend an empty item so user can type new tasks at the top
+            scannedItems.unshift({ text: '', done: false });
             const newTodo = {
                 id,
                 title: result.title || 'AI Scanned List',
-                items: (result.items || []).map(text => ({ text, done: false })),
+                items: scannedItems,
                 timestamp: new Date().toISOString(),
                 pinned: false
             };

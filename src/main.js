@@ -1743,7 +1743,13 @@ function mergeCloudData(cloud) {
     if (cloud.notes) state.notes = mergeArray(state.notes, cloud.notes);
     if (cloud.todos) state.todos = mergeArray(state.todos, cloud.todos);
     if (cloud.financialRecords) state.financialRecords = mergeArray(state.financialRecords, cloud.financialRecords);
-    if (cloud.trash) state.trash = mergeArray(state.trash, cloud.trash);
+    if (cloud.trash) {
+        // Items deleted on another device → remove from active lists
+        const cloudTrashedIds = new Set(cloud.trash.map(t => t.id));
+        state.notes = state.notes.filter(n => !cloudTrashedIds.has(n.id));
+        state.todos = state.todos.filter(t => !cloudTrashedIds.has(t.id));
+        state.trash = mergeArray(state.trash, cloud.trash);
+    }
 
     // Merge financial_records_data (nested object)
     if (cloud.financial_records_data) {

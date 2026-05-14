@@ -38,16 +38,11 @@ async function getOrCreateAppFolder() {
         return folders[0].id;
     }
 
-    const folderMetadata = {
-        name: folderName,
-        mimeType: 'application/vnd.google-apps.folder',
-    };
-
+    const folderMetadata = { name: folderName, mimeType: 'application/vnd.google-apps.folder' };
     const createResponse = await gapi.client.drive.files.create({
         resource: folderMetadata,
         fields: 'id',
     });
-
     return createResponse.result.id;
 }
 
@@ -58,51 +53,69 @@ function checkAllInited(resolve) {
 export function authenticateGoogle() {
     return new Promise((resolve, reject) => {
         tokenClient.callback = async (resp) => {
-            if (resp.error !== undefined) {
-                reject(resp);
-                return;
-            }
+            if (resp.error !== undefined) { reject(resp); return; }
             gapi.client.setToken(resp);
             resolve(resp);
         };
-
-        // Always prompt for consent to avoid iframe silent-auth redirect in PWA
         tokenClient.requestAccessToken({ prompt: 'consent' });
     });
 }
 
-/**
- * Catch 403 errors from expired tokens and skip them gracefully.
- * Never auto-refreshes — that causes redirects in iOS PWA.
- * User re-authenticates manually via Settings → Drive Sync.
- */
+// --- Helpers ---
+
+function is403(err) {
+    return err && (err.status === 403 || (err.result && err.result.error && err.result.error.code === 403));
+}
+
+class DriveAuthError extends Error {
+    constructor() { super('Drive auth failed'); this.name = 'DriveAuthError'; }
+}
+
+/** Get a fresh token — silent iframe in Safari, consent popup in PWA */
+function getFreshToken() {
+    return new Promise((resolve) => {
+        tokenClient.callback = (resp) => {
+            if (resp.error) { resolve(null); return; }
+            gapi.client.setToken(resp);
+            resolve(resp);
+        };
+        // PWA: iframe-based silent auth fails, use consent popup (opens Safari)
+        // Non-PWA: silent iframe works
+        tokenClient.requestAccessToken({ prompt: window.navigator.standalone ? 'consent' : '' });
+    });
+}
+
+/** For background ops (polling, load) — silent skip on 403, never refresh */
 async function skipOn403(fn) {
     try {
         return await fn();
     } catch (err) {
-        const is403 = err && (
-            err.status === 403 ||
-            (err.result && err.result.error && err.result.error.code === 403)
-        );
-        if (is403) {
-            console.log('[Drive] 403 skipped (expired token — re-login via Settings)');
-            // Return a sentinel so callers can distinguish "not found" from "error"
-            throw new DriveAuthError();
-        }
+        if (is403(err)) throw new DriveAuthError();
         throw err;
     }
 }
 
-class DriveAuthError extends Error {
-    constructor() {
-        super('Drive auth failed');
-        this.name = 'DriveAuthError';
+/** For user-initiated sync — refresh token on 403, then retry once */
+let refreshAttempt = null;
+async function withTokenRefresh(fn) {
+    try {
+        return await fn();
+    } catch (err) {
+        if (!is403(err)) throw err;
+        // Share a single refresh attempt across concurrent calls
+        if (!refreshAttempt) refreshAttempt = getFreshToken();
+        const token = await refreshAttempt;
+        refreshAttempt = null;
+        if (token) return await fn();
+        throw new DriveAuthError();
     }
 }
 
+// --- Exported API ---
+
 export async function syncToDrive(data) {
     try {
-        return await skipOn403(async () => {
+        return await withTokenRefresh(async () => {
             const folderId = await getOrCreateAppFolder();
             const fileName = 'smart_note_backup.json';
 
@@ -122,11 +135,7 @@ export async function syncToDrive(data) {
 
             const files = response.result.files;
             const fileContent = JSON.stringify(payload);
-            const metadata = {
-                name: fileName,
-                mimeType: 'application/json',
-                parents: [folderId],
-            };
+            const metadata = { name: fileName, mimeType: 'application/json', parents: [folderId] };
 
             if (files.length > 0) {
                 const fileId = files[0].id;
@@ -136,12 +145,9 @@ export async function syncToDrive(data) {
                     params: { uploadType: 'media' },
                     body: fileContent,
                 });
-
                 if (files.length > 1) {
                     for (let i = 1; i < files.length; i++) {
-                        await gapi.client.drive.files.delete({
-                            fileId: files[i].id,
-                        });
+                        await gapi.client.drive.files.delete({ fileId: files[i].id });
                     }
                 }
             } else {
@@ -175,11 +181,7 @@ export async function loadFromDrive() {
             if (files.length === 0) return null;
 
             const fileId = files[0].id;
-            const file = await gapi.client.drive.files.get({
-                fileId: fileId,
-                alt: 'media',
-            });
-
+            const file = await gapi.client.drive.files.get({ fileId, alt: 'media' });
             return typeof file.result === 'string' ? JSON.parse(file.result) : file.result;
         });
     } catch (err) {
@@ -200,7 +202,6 @@ export async function checkDriveForUpdates() {
 
             const files = response.result.files;
             if (files.length === 0) return null;
-
             return files[0].modifiedTime || null;
         });
     } catch (err) {

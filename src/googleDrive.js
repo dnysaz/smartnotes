@@ -50,6 +50,7 @@ function checkAllInited(resolve) {
     if (gapiInited && gisInited) resolve(true);
 }
 
+/** Explicit user login — always consent (popup). Only called on button click. */
 export function authenticateGoogle() {
     return new Promise((resolve, reject) => {
         tokenClient.callback = async (resp) => {
@@ -61,31 +62,16 @@ export function authenticateGoogle() {
     });
 }
 
-// --- Helpers ---
-
-function is403(err) {
-    return err && (err.status === 403 || (err.result && err.result.error && err.result.error.code === 403));
-}
+// --- 403 handling: all silent, no auto-refresh (prevents PWA redirects) ---
 
 class DriveAuthError extends Error {
     constructor() { super('Drive auth failed'); this.name = 'DriveAuthError'; }
 }
 
-/** Get a fresh token — silent iframe in Safari, consent popup in PWA */
-function getFreshToken() {
-    return new Promise((resolve) => {
-        tokenClient.callback = (resp) => {
-            if (resp.error) { resolve(null); return; }
-            gapi.client.setToken(resp);
-            resolve(resp);
-        };
-        // PWA: iframe-based silent auth fails, use consent popup (opens Safari)
-        // Non-PWA: silent iframe works
-        tokenClient.requestAccessToken({ prompt: window.navigator.standalone ? 'consent' : '' });
-    });
+function is403(err) {
+    return err && (err.status === 403 || (err.result && err.result.error && err.result.error.code === 403));
 }
 
-/** For background ops (polling, load) — silent skip on 403, never refresh */
 async function skipOn403(fn) {
     try {
         return await fn();
@@ -95,27 +81,11 @@ async function skipOn403(fn) {
     }
 }
 
-/** For user-initiated sync — refresh token on 403, then retry once */
-let refreshAttempt = null;
-async function withTokenRefresh(fn) {
-    try {
-        return await fn();
-    } catch (err) {
-        if (!is403(err)) throw err;
-        // Share a single refresh attempt across concurrent calls
-        if (!refreshAttempt) refreshAttempt = getFreshToken();
-        const token = await refreshAttempt;
-        refreshAttempt = null;
-        if (token) return await fn();
-        throw new DriveAuthError();
-    }
-}
-
 // --- Exported API ---
 
 export async function syncToDrive(data) {
     try {
-        return await withTokenRefresh(async () => {
+        return await skipOn403(async () => {
             const folderId = await getOrCreateAppFolder();
             const fileName = 'smart_note_backup.json';
 

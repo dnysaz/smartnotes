@@ -1786,7 +1786,6 @@ window.hideLoading = () => {
 
 window.handleDriveSync = async () => {
     if (state.isLoggedIn) {
-        // Manual sync
         const syncStatus = document.getElementById('sync-status-text');
         const syncLabel = document.getElementById('sync-label');
         if (syncStatus) syncStatus.classList.remove('hidden');
@@ -1796,12 +1795,25 @@ window.handleDriveSync = async () => {
             ...state,
             financial_records_data: JSON.parse(localStorage.getItem('financial_records_data')) || {}
         };
-        const success = await syncToDrive(payload);
+        let success = await syncToDrive(payload);
+
+        // If sync failed (expired token), re-authenticate and retry
+        if (!success && state.isLoggedIn) {
+            if (syncLabel) syncLabel.textContent = 'Session expired, reconnecting...';
+            try {
+                const resp = await authenticateGoogle();
+                if (resp) {
+                    success = await syncToDrive(payload);
+                }
+            } catch (e) {
+                console.warn('[Drive] Re-auth cancelled');
+            }
+        }
 
         if (syncStatus) syncStatus.classList.add('hidden');
         if (syncLabel) syncLabel.textContent = success ? 'Synced' : 'Failed';
         if (success) window.showToast('Sync complete');
-        else window.showToast('Sync failed');
+        else window.showToast('Sync failed. Tap again to retry.');
     } else {
         // Guest → login
         await window.handleGoogleLogin();

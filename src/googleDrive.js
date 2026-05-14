@@ -1,46 +1,33 @@
-/**
- * Smart Note — Google Drive Sync Engine
- * Uses Google Identity Services (GIS) and GAPI Client.
- */
 import { env } from './env.js';
 
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 
-/**
- * Initialize GAPI Client
- */
 export async function initDriveSync() {
     return new Promise((resolve) => {
-        // Load GAPI
         gapi.load('client', async () => {
             await gapi.client.init({
-                apiKey: env.GOOGLE_API_KEY,
+                apiKey: env.GOOGLE_API_KEY || undefined,
                 discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
             });
             gapiInited = true;
             checkAllInited(resolve);
         });
 
-        // Load GIS
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: env.GOOGLE_CLIENT_ID,
-            scope: 'https://www.googleapis.com/auth/drive.file email', // Visible files scope + email
-            callback: '', // defined at request time
+            scope: 'https://www.googleapis.com/auth/drive.file email',
+            callback: '',
         });
         gisInited = true;
         checkAllInited(resolve);
     });
 }
 
-/**
- * Get or Create the App Folder in Root
- */
 async function getOrCreateAppFolder() {
     const folderName = 'Smart Note Workspace';
-    
-    // Search for folder
+
     const response = await gapi.client.drive.files.list({
         q: `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
         fields: 'files(id, name)',
@@ -51,7 +38,6 @@ async function getOrCreateAppFolder() {
         return folders[0].id;
     }
 
-    // Create if not found
     const folderMetadata = {
         name: folderName,
         mimeType: 'application/vnd.google-apps.folder',
@@ -69,9 +55,6 @@ function checkAllInited(resolve) {
     if (gapiInited && gisInited) resolve(true);
 }
 
-/**
- * Real Google Login
- */
 export function authenticateGoogle() {
     return new Promise((resolve, reject) => {
         tokenClient.callback = async (resp) => {
@@ -83,81 +66,46 @@ export function authenticateGoogle() {
             resolve(resp);
         };
 
-        // Use consent prompt in PWA (silent refresh redirects to Safari)
-        // or if no token exists yet
-        const token = gapi.client.getToken();
-        const useConsent = window.navigator.standalone ||
-                           token === null ||
-                           (token.expires_at && token.expires_at - Date.now() < 60000);
-
-        tokenClient.requestAccessToken({ prompt: useConsent ? 'consent' : '' });
+        // Always prompt for consent to avoid iframe silent-auth redirect in PWA
+        tokenClient.requestAccessToken({ prompt: 'consent' });
     });
 }
 
 /**
- * Silently refresh the OAuth token before Drive API calls.
- * Google access tokens expire after ~1 hour.
- * NOTE: In iOS PWA standalone mode, silent refresh is skipped because
- * iframe-based OAuth is unsupported — falls through to manual re-login.
+ * Catch 403 errors from expired tokens and skip them gracefully.
+ * Never auto-refreshes — that causes redirects in iOS PWA.
+ * User re-authenticates manually via Settings → Drive Sync.
  */
-async function ensureToken() {
-    // iOS PWA standalone can't do iframe-based silent OAuth (redirects to Safari)
-    if (window.navigator.standalone) {
-        return false;
-    }
-
-    return new Promise((resolve) => {
-        const currentToken = gapi.client.getToken();
-        if (currentToken && currentToken.expires_at) {
-            const expiresIn = currentToken.expires_at - Date.now();
-            if (expiresIn > 300000) {
-                resolve(true);
-                return;
-            }
-        }
-
-        tokenClient.callback = (resp) => {
-            if (resp.error) {
-                console.warn('[Drive] Silent token refresh failed:', resp.error);
-                resolve(false);
-                return;
-            }
-            gapi.client.setToken(resp);
-            resolve(true);
-        };
-        tokenClient.requestAccessToken({ prompt: '' });
-    });
-}
-
-/**
- * Wrapper: retry a Drive API call once if it fails with 403 (expired token).
- * Tries to refresh the token and retries.
- */
-async function withTokenRetry(fn) {
+async function skipOn403(fn) {
     try {
         return await fn();
     } catch (err) {
-        if (err && (err.status === 403 || (err.result && err.result.error && err.result.error.code === 403))) {
-            console.log('[Drive] 403 detected, refreshing token and retrying...');
-            const refreshed = await ensureToken();
-            if (refreshed) {
-                return await fn();
-            }
+        const is403 = err && (
+            err.status === 403 ||
+            (err.result && err.result.error && err.result.error.code === 403)
+        );
+        if (is403) {
+            console.log('[Drive] 403 skipped (expired token — re-login via Settings)');
+            // Return a sentinel so callers can distinguish "not found" from "error"
+            throw new DriveAuthError();
         }
         throw err;
     }
 }
 
-/**
- * Sync Data to Google Drive (Visible Folder)
- */
+class DriveAuthError extends Error {
+    constructor() {
+        super('Drive auth failed');
+        this.name = 'DriveAuthError';
+    }
+}
+
 export async function syncToDrive(data) {
     try {
-        return await withTokenRetry(async () => {
+        return await skipOn403(async () => {
             const folderId = await getOrCreateAppFolder();
             const fileName = 'smart_note_backup.json';
 
-            // Build payload termasuk financial_records_data
             const payload = {
                 notes: data.notes || [],
                 todos: data.todos || [],
@@ -167,7 +115,6 @@ export async function syncToDrive(data) {
                 exportDate: new Date().toISOString()
             };
 
-            // 1. Check if file exists in the specific folder
             const response = await gapi.client.drive.files.list({
                 q: `name = '${fileName}' and '${folderId}' in parents and trashed = false`,
                 fields: 'files(id, name)',
@@ -182,7 +129,6 @@ export async function syncToDrive(data) {
             };
 
             if (files.length > 0) {
-                // 1. Update the first file
                 const fileId = files[0].id;
                 await gapi.client.request({
                     path: `/upload/drive/v3/files/${fileId}`,
@@ -190,20 +136,15 @@ export async function syncToDrive(data) {
                     params: { uploadType: 'media' },
                     body: fileContent,
                 });
-                console.log('[Drive] Sync: Update success in Workspace folder');
 
-                // 2. Clean up duplicates (delete all other files with the same name)
                 if (files.length > 1) {
-                    console.log(`[Drive] Sync: Cleaning up ${files.length - 1} duplicates...`);
                     for (let i = 1; i < files.length; i++) {
                         await gapi.client.drive.files.delete({
                             fileId: files[i].id,
                         });
                     }
-                    console.log('[Drive] Sync: Duplicate cleanup complete');
                 }
             } else {
-                // Create new file
                 await gapi.client.request({
                     path: '/upload/drive/v3/files',
                     method: 'POST',
@@ -211,22 +152,19 @@ export async function syncToDrive(data) {
                     body: `--foo\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--foo\r\nContent-Type: application/json\r\n\r\n${fileContent}\r\n--foo--`,
                     headers: { 'Content-Type': 'multipart/related; boundary=foo' }
                 });
-                console.log('[Drive] Sync: Created new file in Workspace folder');
             }
             return true;
         });
     } catch (err) {
+        if (err instanceof DriveAuthError) return false;
         console.error('[Drive] Sync Error:', err);
         return false;
     }
 }
 
-/**
- * Load Data from Google Drive
- */
 export async function loadFromDrive() {
     try {
-        return await withTokenRetry(async () => {
+        return await skipOn403(async () => {
             const folderId = await getOrCreateAppFolder();
             const response = await gapi.client.drive.files.list({
                 q: `name = 'smart_note_backup.json' and '${folderId}' in parents and trashed = false`,
@@ -245,18 +183,15 @@ export async function loadFromDrive() {
             return typeof file.result === 'string' ? JSON.parse(file.result) : file.result;
         });
     } catch (err) {
+        if (err instanceof DriveAuthError) return null;
         console.error('[Drive] Load Error:', err);
         return null;
     }
 }
 
-/**
- * Check if Drive backup has been modified since last check
- * Returns the modifiedTime string if updated, null if not
- */
 export async function checkDriveForUpdates() {
     try {
-        return await withTokenRetry(async () => {
+        return await skipOn403(async () => {
             const folderId = await getOrCreateAppFolder();
             const response = await gapi.client.drive.files.list({
                 q: `name = 'smart_note_backup.json' and '${folderId}' in parents and trashed = false`,
@@ -269,6 +204,7 @@ export async function checkDriveForUpdates() {
             return files[0].modifiedTime || null;
         });
     } catch (err) {
+        if (err instanceof DriveAuthError) return null;
         console.error('[Drive] Check update error:', err);
         return null;
     }

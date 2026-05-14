@@ -1291,8 +1291,6 @@ captureBtn.addEventListener('click', async () => {
                 const firstInput = document.querySelector('.todo-item-input');
                 if (firstInput) firstInput.focus();
             }, 100);
-            saveData();
-            stopCamera();
         } else {
             createNewNote();
             const note = state.notes.find(n => n.id === state.currentNoteId);

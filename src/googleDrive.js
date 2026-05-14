@@ -79,33 +79,38 @@ export function authenticateGoogle() {
                 reject(resp);
                 return;
             }
-            // Explicitly set token so gapi.client uses it for all Drive calls
             gapi.client.setToken(resp);
             resolve(resp);
         };
 
-        if (gapi.client.getToken() === null) {
-            // Prompt for consent
-            tokenClient.requestAccessToken({ prompt: 'consent' });
-        } else {
-            // Re-use token silently
-            tokenClient.requestAccessToken({ prompt: '' });
-        }
+        // Use consent prompt in PWA (silent refresh redirects to Safari)
+        // or if no token exists yet
+        const token = gapi.client.getToken();
+        const useConsent = window.navigator.standalone ||
+                           token === null ||
+                           (token.expires_at && token.expires_at - Date.now() < 60000);
+
+        tokenClient.requestAccessToken({ prompt: useConsent ? 'consent' : '' });
     });
 }
 
 /**
  * Silently refresh the OAuth token before Drive API calls.
- * Google access tokens expire after ~1 hour — this ensures we always
- * have a fresh one without showing UI to the user.
+ * Google access tokens expire after ~1 hour.
+ * NOTE: In iOS PWA standalone mode, silent refresh is skipped because
+ * iframe-based OAuth is unsupported — falls through to manual re-login.
  */
 async function ensureToken() {
+    // iOS PWA standalone can't do iframe-based silent OAuth (redirects to Safari)
+    if (window.navigator.standalone) {
+        return false;
+    }
+
     return new Promise((resolve) => {
-        // If already have a valid token, skip
         const currentToken = gapi.client.getToken();
         if (currentToken && currentToken.expires_at) {
             const expiresIn = currentToken.expires_at - Date.now();
-            if (expiresIn > 300000) { // 5 min buffer
+            if (expiresIn > 300000) {
                 resolve(true);
                 return;
             }
@@ -120,7 +125,6 @@ async function ensureToken() {
             gapi.client.setToken(resp);
             resolve(true);
         };
-        // prompt: '' = use existing grant silently, no UI
         tokenClient.requestAccessToken({ prompt: '' });
     });
 }

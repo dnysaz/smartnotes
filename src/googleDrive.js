@@ -98,6 +98,13 @@ export async function syncToDrive(data) {
                 exportDate: new Date().toISOString()
             };
 
+            // Dedup: ensure trashed items never appear in notes/todos
+            const trashedIds = new Set((data.trash || []).map(t => t.id));
+            if (trashedIds.size > 0) {
+                payload.notes = payload.notes.filter(n => !trashedIds.has(n.id));
+                payload.todos = payload.todos.filter(t => !trashedIds.has(t.id));
+            }
+
             const response = await gapi.client.drive.files.list({
                 q: `name = '${fileName}' and '${folderId}' in parents and trashed = false`,
                 fields: 'files(id, name)',

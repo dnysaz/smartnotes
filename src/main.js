@@ -711,15 +711,13 @@ function createNewTodo() {
     state.currentTodoId = id;
     renderTodoView();
     switchView('todo-view');
-    // Focus the first item's textarea
-    setTimeout(() => {
-        const firstTextarea = document.querySelector('.todo-text-input');
-        if (firstTextarea) {
-            firstTextarea.focus();
-            // Move cursor to end
-            firstTextarea.selectionStart = firstTextarea.selectionEnd = firstTextarea.value.length;
-        }
-    }, 100);
+    // Focus the first item's textarea immediately (synchronously for mobile)
+    const firstTextarea = document.querySelector('.todo-text-input');
+    if (firstTextarea) {
+        firstTextarea.focus();
+        // Move cursor to end
+        firstTextarea.selectionStart = firstTextarea.selectionEnd = firstTextarea.value.length;
+    }
     saveData();
 }
 
@@ -791,13 +789,11 @@ function renderTodoView() {
                     todo.items.splice(index, 1);
                     todo.timestamp = new Date().toISOString();
                     renderTodoView();
-                    // Focus previous item if exists
-                    setTimeout(() => {
-                        const inputs = todoItemsContainer.querySelectorAll('.todo-text-input');
-                        if (inputs[Math.max(0, index - 1)]) {
-                            inputs[Math.max(0, index - 1)].focus();
-                        }
-                    }, 50);
+                    // Focus previous item if exists (synchronously for mobile keyboard)
+                    const inputs = todoItemsContainer.querySelectorAll('.todo-text-input');
+                    if (inputs[Math.max(0, index - 1)]) {
+                        inputs[Math.max(0, index - 1)].focus();
+                    }
                     saveData();
                 }
             }
@@ -844,13 +840,11 @@ function addTodoItem(insertIndex = -1) {
         
         renderTodoView();
         
-        // Focus the newly created textarea immediately
-        setTimeout(() => {
-            const inputs = todoItemsContainer.querySelectorAll('.todo-text-input');
-            if (inputs[newIndex]) {
-                inputs[newIndex].focus();
-            }
-        }, 50);
+        // Focus the newly created textarea immediately (synchronously for mobile keyboard)
+        const inputs = todoItemsContainer.querySelectorAll('.todo-text-input');
+        if (inputs[newIndex]) {
+            inputs[newIndex].focus();
+        }
         
         saveData();
     }

@@ -713,8 +713,12 @@ function createNewTodo() {
     switchView('todo-view');
     // Focus the first item's textarea
     setTimeout(() => {
-        const firstTextarea = document.querySelector('.todo-item-input');
-        if (firstTextarea) firstTextarea.focus();
+        const firstTextarea = document.querySelector('.todo-text-input');
+        if (firstTextarea) {
+            firstTextarea.focus();
+            // Move cursor to end
+            firstTextarea.selectionStart = firstTextarea.selectionEnd = firstTextarea.value.length;
+        }
     }, 100);
     saveData();
 }
@@ -774,11 +778,26 @@ function renderTodoView() {
         });
         setTimeout(adjustHeight, 0);
 
-        // Keyboard support: Enter for new list at TOP
+        // Keyboard support: Enter for new list item directly below current one
         textarea.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                addTodoItem(); // This now unshifts to the top
+                addTodoItem(index); // Pass current index to insert below
+            } else if (e.key === 'Backspace' && item.text === '') {
+                // Optional polish: Backspace on empty item deletes it
+                e.preventDefault();
+                if (todo.items.length > 1) {
+                    todo.items.splice(index, 1);
+                    renderTodoView();
+                    // Focus previous item if exists
+                    setTimeout(() => {
+                        const inputs = todoItemsContainer.querySelectorAll('.todo-text-input');
+                        if (inputs[Math.max(0, index - 1)]) {
+                            inputs[Math.max(0, index - 1)].focus();
+                        }
+                    }, 50);
+                    saveData();
+                }
             }
         });
 
@@ -810,17 +829,21 @@ todoTitleInput.addEventListener('blur', (e) => {
 
 
 
-function addTodoItem() {
+function addTodoItem(insertIndex = -1) {
     const todo = state.todos.find(t => t.id === state.currentTodoId);
     if (todo) {
-        // Add new empty item at the TOP (index 0)
-        todo.items.unshift({ text: '', done: false });
+        // If an index is provided, insert below it. Otherwise insert at top.
+        const newIndex = insertIndex >= 0 ? insertIndex + 1 : 0;
+        todo.items.splice(newIndex, 0, { text: '', done: false });
+        
         renderTodoView();
         
-        // Focus the top textarea immediately
+        // Focus the newly created textarea immediately
         setTimeout(() => {
-            const inputs = todoItemsContainer.querySelectorAll('textarea');
-            inputs[0]?.focus();
+            const inputs = todoItemsContainer.querySelectorAll('.todo-text-input');
+            if (inputs[newIndex]) {
+                inputs[newIndex].focus();
+            }
         }, 50);
         
         saveData();

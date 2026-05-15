@@ -223,6 +223,7 @@ const getViews = () => document.querySelectorAll('.view');
 const noteEditor = document.getElementById('note-editor');
 const todoTitleInput = document.getElementById('todo-title-input');
 const todoItemsContainer = document.getElementById('todo-list-items');
+const staticTodoAdd = document.getElementById('static-todo-add');
 const recentItemsContainer = document.getElementById('recent-items');
 const saveIndicators = document.querySelectorAll('.save-indicator');
 
@@ -703,7 +704,7 @@ function createNewTodo() {
     const newTodo = {
         id,
         title: '',
-        items: [{ text: '', done: false }], // Always start with one empty item
+        items: [], // Start empty, user will use static input
         timestamp: new Date().toISOString(),
         pinned: false
     };
@@ -711,12 +712,10 @@ function createNewTodo() {
     state.currentTodoId = id;
     renderTodoView();
     switchView('todo-view');
-    // Focus the first item's textarea immediately (synchronously for mobile)
-    const firstTextarea = document.querySelector('.todo-text-input');
-    if (firstTextarea) {
-        firstTextarea.focus();
-        // Move cursor to end
-        firstTextarea.selectionStart = firstTextarea.selectionEnd = firstTextarea.value.length;
+    // Focus the static add input
+    const staticInput = document.getElementById('static-todo-add');
+    if (staticInput) {
+        staticInput.focus();
     }
     saveData();
 }
@@ -783,19 +782,20 @@ function renderTodoView() {
                 e.preventDefault();
                 addTodoItem(index); // Pass current index to insert below
             } else if (e.key === 'Backspace' && item.text === '') {
-                // Optional polish: Backspace on empty item deletes it
+                // Backspace on empty item deletes it
                 e.preventDefault();
-                if (todo.items.length > 1) {
-                    todo.items.splice(index, 1);
-                    todo.timestamp = new Date().toISOString();
-                    renderTodoView();
-                    // Focus previous item if exists (synchronously for mobile keyboard)
-                    const inputs = todoItemsContainer.querySelectorAll('.todo-text-input');
-                    if (inputs[Math.max(0, index - 1)]) {
-                        inputs[Math.max(0, index - 1)].focus();
-                    }
-                    saveData();
+                todo.items.splice(index, 1);
+                todo.timestamp = new Date().toISOString();
+                renderTodoView();
+                // Focus previous item if exists, otherwise focus static input
+                const inputs = todoItemsContainer.querySelectorAll('.todo-text-input');
+                if (index > 0 && inputs[index - 1]) {
+                    inputs[index - 1].focus();
+                } else {
+                    const staticInput = document.getElementById('static-todo-add');
+                    if (staticInput) staticInput.focus();
                 }
+                saveData();
             }
         });
 
@@ -827,6 +827,26 @@ todoTitleInput.addEventListener('blur', (e) => {
         saveData();
     }
 });
+
+if (staticTodoAdd) {
+    staticTodoAdd.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const text = e.target.value.trim();
+            if (text) {
+                const todo = state.todos.find(t => t.id === state.currentTodoId);
+                if (todo) {
+                    todo.items.unshift({ text, done: false });
+                    todo.timestamp = new Date().toISOString();
+                    renderTodoView();
+                    e.target.value = '';
+                    e.target.focus();
+                    saveData();
+                }
+            }
+        }
+    });
+}
 
 
 
@@ -1380,8 +1400,6 @@ captureBtn.addEventListener('click', async () => {
         if (result.type === 'todo') {
             const id = Date.now().toString();
             const scannedItems = (result.items || []).map(text => ({ text, done: false }));
-            // Prepend an empty item so user can type new tasks at the top
-            scannedItems.unshift({ text: '', done: false });
             const newTodo = {
                 id,
                 title: result.title || 'AI Scanned List',
@@ -1394,8 +1412,8 @@ captureBtn.addEventListener('click', async () => {
             renderTodoView();
             switchView('todo-view');
             setTimeout(() => {
-                const firstInput = document.querySelector('#todo-list-items textarea');
-                if (firstInput) firstInput.focus();
+                const staticInput = document.getElementById('static-todo-add');
+                if (staticInput) staticInput.focus();
             }, 200);
         } else {
             createNewNote();

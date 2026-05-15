@@ -41,9 +41,18 @@ export const noteView = `
                 </button>
             </div>
         </header>
-        <div class="mb-6">
+        <div class="mb-4">
             <input type="text" id="todo-title-input" class="text-2xl font-bold bg-transparent border-none outline-none w-full placeholder-gray-200" placeholder="Untitled List">
         </div>
+        
+        <!-- Static Add Task Input -->
+        <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl mb-4 group focus-within:bg-blue-50 focus-within:ring-2 ring-blue-200 transition-all shrink-0">
+            <div class="w-6 h-6 rounded-full border-2 border-gray-300 text-transparent flex items-center justify-center shrink-0">
+                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg>
+            </div>
+            <input type="text" id="static-todo-add" class="bg-transparent border-none outline-none flex-1 text-lg placeholder-gray-400" placeholder="Add a task...">
+        </div>
+
         <div id="todo-list-items" class="flex-1 overflow-y-auto no-scrollbar space-y-1 pb-20"></div>
     </div>
     </div>

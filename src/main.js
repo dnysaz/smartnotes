@@ -1068,7 +1068,6 @@ function renderRecent() {
                 grid.appendChild(div);
                 return;
             }
-            }
             const shortDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
             let titleText = '';

@@ -477,15 +477,29 @@ export async function createPublicShare(shareData) {
         });
 
         // 4. Make it collaborative (anyone with link can write)
-        await gapi.client.drive.permissions.create({
-            fileId: fileId,
-            resource: {
-                type: 'anyone',
-                role: 'writer'
+        try {
+            await gapi.client.drive.permissions.create({
+                fileId: fileId,
+                resource: {
+                    type: 'anyone',
+                    role: 'writer'
+                }
+            });
+            console.log('[Drive] Created public share with writer perms:', fileId);
+        } catch (pErr) {
+            console.error('[Drive] FAILED to set public writer permissions. Organization might block public sharing.', pErr);
+            // Try fallback to 'reader'
+            try {
+                await gapi.client.drive.permissions.create({
+                    fileId: fileId,
+                    resource: { type: 'anyone', role: 'reader' }
+                });
+                console.warn('[Drive] Fallback to public reader successful');
+            } catch (pErr2) {
+                console.error('[Drive] Public reader fallback also failed');
             }
-        });
+        }
 
-        console.log('[Drive] Created public share:', fileId);
         return fileId;
     });
 }

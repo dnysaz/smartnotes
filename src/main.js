@@ -2342,9 +2342,32 @@ window.initApp = async () => {
         // Auto-restore Google session for logged-in users
         if (state.isLoggedIn) {
             console.log('[Drive] Restoring session...');
-            restoreSession().then(restored => {
+            restoreSession().then(async restored => {
                 if (restored) {
                     console.log('[Drive] ✅ Session restored — starting sync');
+                    
+                    // If profile is generic or missing picture, refresh it
+                    if (!state.userProfile || state.userProfile.name === 'Smart Note User' || state.userProfile.name === 'User' || !state.userProfile.picture) {
+                        try {
+                            const token = gapi.client.getToken();
+                            if (token) {
+                                const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                                    headers: { 'Authorization': `Bearer ${token.access_token}` }
+                                });
+                                if (userInfoResp.ok) {
+                                    const userInfo = await userInfoResp.json();
+                                    state.userProfile = {
+                                        name: userInfo.name || state.userProfile?.name || 'User',
+                                        email: userInfo.email || state.userProfile?.email || '',
+                                        picture: userInfo.picture || ""
+                                    };
+                                    localStorage.setItem('userProfile', JSON.stringify(state.userProfile));
+                                    renderRecent(); // Update UI with new initials
+                                }
+                            }
+                        } catch (e) { console.warn('[Drive] Failed to refresh profile:', e); }
+                    }
+
                     driveLastModified = null;
                     startDrivePolling();
                     pullCloudChanges();
@@ -2557,9 +2580,22 @@ window.handleGoogleLogin = async () => {
         } catch (e) { /* ignore */ }
 
         state.userProfile = {
-            name: "Smart Note User",
-            email: userEmail
+            name: "User",
+            email: userEmail,
+            picture: ""
         };
+
+        // Fetch real profile from Google if possible
+        try {
+            const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { 'Authorization': `Bearer ${resp.access_token}` }
+            });
+            if (userInfoResp.ok) {
+                const userInfo = await userInfoResp.json();
+                state.userProfile.name = userInfo.name || state.userProfile.name;
+                state.userProfile.picture = userInfo.picture || "";
+            }
+        } catch (e) { console.warn('[Drive] Failed to fetch profile:', e); }
         
         localStorage.setItem('isLoggedIn', 'true');
         localStorage.setItem('hasSkippedLogin', 'false');

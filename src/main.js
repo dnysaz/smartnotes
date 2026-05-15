@@ -141,7 +141,7 @@ async function pullCloudChanges() {
             window.showToast('📲 Data updated from another device');
         }
         
-        await syncCollaborators(); // Check for new adopters
+        await syncCollaborationData(); // Check for new adopters
         return changed;
     } catch (e) {
         console.warn('[Drive] Sync pull error (silent):', e.message);
@@ -150,14 +150,16 @@ async function pullCloudChanges() {
 }
 
 /**
- * Periodically checks shared files to see if anyone has adopted them.
+ * Periodically checks shared files to see if anyone has adopted them
+ * AND pulls content updates from collaborators.
  */
-async function syncCollaborators() {
+async function syncCollaborationData() {
     if (!state.isLoggedIn) return;
     
+    // Check both items I own and items I adopted
     const sharedItems = [
-        ...state.notes.filter(n => n.shareId && !n.adoptedFrom),
-        ...state.todos.filter(t => t.shareId && !t.adoptedFrom)
+        ...state.notes.filter(n => n.shareId || n.adoptedFrom),
+        ...state.todos.filter(t => t.shareId || t.adoptedFrom)
     ];
 
     if (sharedItems.length === 0) return;
@@ -165,23 +167,46 @@ async function syncCollaborators() {
     let updated = false;
     for (const item of sharedItems) {
         try {
-            // Fetch shared file content to see latest collaborator list
-            const remoteData = await fetchPublicShare(item.shareId);
-            if (remoteData && Array.isArray(remoteData.collaborators)) {
-                const currentCount = (item.collaborators || []).length;
-                if (remoteData.collaborators.length !== currentCount) {
-                    item.collaborators = remoteData.collaborators;
-                    updated = true;
+            const fileId = item.shareId || item.adoptedFrom;
+            const remoteData = await fetchPublicShare(fileId);
+            
+            if (remoteData) {
+                // 1. Sync Collaborators
+                if (Array.isArray(remoteData.collaborators)) {
+                    const currentCount = (item.collaborators || []).length;
+                    if (remoteData.collaborators.length !== currentCount) {
+                        item.collaborators = remoteData.collaborators;
+                        updated = true;
+                    }
+                }
+                
+                // 2. Sync Content (Only if NOT currently being edited by US, to avoid cursor jumps)
+                // Or merge if we are not the last writer
+                const isEditingThis = (state.currentNoteId === item.id || state.currentTodoId === item.id);
+                
+                if (!isEditingThis) {
+                    if (remoteData.ty === 'note' && remoteData.c !== item.content) {
+                        item.content = remoteData.c;
+                        updated = true;
+                    } else if (remoteData.ty === 'todo') {
+                        const remoteItemsStr = JSON.stringify(remoteData.c);
+                        const localItemsStr = JSON.stringify(item.items);
+                        if (remoteItemsStr !== localItemsStr) {
+                            item.items = remoteData.c;
+                            updated = true;
+                        }
+                    }
                 }
             }
         } catch (e) {
-            console.warn(`[Drive] Failed to sync collaborators for ${item.id}`, e);
+            console.warn(`[Drive] Collaboration sync failed for ${item.id}`, e.message);
         }
     }
 
     if (updated) {
-        saveData();
+        saveLocally();
         renderRecent();
+        // If current view is the list, it's already re-rendered
     }
 }
 
@@ -632,19 +657,22 @@ function saveData() {
         };
         debouncedSyncToDrive(syncPayload);
 
-        // Collaboration Sync: If currently editing an adopted item, update the public share
+        // Collaboration Sync: If currently editing a shared/collaborative item, update the public share
         const currentNote = state.notes.find(n => n.id === state.currentNoteId);
-        if (currentNote && currentNote.adoptedFrom) {
-            updatePublicShare(currentNote.adoptedFrom, {
-                t: 'Collaborative Note',
+        const noteShareId = currentNote ? (currentNote.shareId || currentNote.adoptedFrom) : null;
+        if (noteShareId) {
+            updatePublicShare(noteShareId, {
+                t: currentNote.title || 'Collaborative Note',
                 c: currentNote.content,
                 ty: 'note'
             });
         }
+
         const currentTodo = state.todos.find(t => t.id === state.currentTodoId);
-        if (currentTodo && currentTodo.adoptedFrom) {
-            updatePublicShare(currentTodo.adoptedFrom, {
-                t: currentTodo.title,
+        const todoShareId = currentTodo ? (currentTodo.shareId || currentTodo.adoptedFrom) : null;
+        if (todoShareId) {
+            updatePublicShare(todoShareId, {
+                t: currentTodo.title || 'Collaborative Todo',
                 c: currentTodo.items,
                 ty: 'todo'
             });

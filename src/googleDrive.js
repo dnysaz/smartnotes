@@ -497,32 +497,33 @@ export async function createPublicShare(shareData) {
 export async function fetchPublicShare(fileId) {
     if (!fileId) return null;
     
-    // Attempt multiple times in case of propagation delay
-    for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-            const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${env.GOOGLE_API_KEY}`;
-            const response = await fetch(url);
-            
-            if (response.ok) {
-                return await response.json();
+    try {
+        // Use gapi.client.request instead of fetch to avoid CORS issues
+        // GAPI library handles cross-origin requests via its own internal proxy/iframe
+        const response = await gapi.client.request({
+            path: `https://www.googleapis.com/drive/v3/files/${fileId}`,
+            method: 'GET',
+            params: { 
+                alt: 'media',
+                key: env.GOOGLE_API_KEY 
             }
-            
-            console.warn(`[Drive] Fetch attempt ${attempt + 1} failed: ${response.status}`);
-            
-            // If 403/404, maybe gapi can do better if user happens to be owner
-            if (gapiInited) {
-                try {
-                    const gRes = await gapi.client.drive.files.get({ fileId, alt: 'media' });
-                    if (gRes.result) return typeof gRes.result === 'string' ? JSON.parse(gRes.result) : gRes.result;
-                } catch (ge) {
-                    // Ignore gapi failure
-                }
-            }
-        } catch (e) {
-            console.error(`[Drive] Fetch attempt ${attempt + 1} error:`, e);
-        }
+        });
         
-        if (attempt === 0) await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
+        if (response && response.result) {
+            const data = response.result;
+            return typeof data === 'string' ? JSON.parse(data) : data;
+        }
+    } catch (e) {
+        console.error("[Drive] Failed to fetch public share via gapi", e);
+        
+        // Final fallback if gapi is not ready or failed (though this might hit CORS)
+        try {
+             const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${env.GOOGLE_API_KEY}`;
+             const res = await fetch(url);
+             if (res.ok) return await res.json();
+        } catch (f) {
+             console.error("[Drive] Fetch fallback also failed", f);
+        }
     }
     return null;
 }

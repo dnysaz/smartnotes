@@ -112,6 +112,7 @@ const initGapiWithRetry = () => {
 initGapiWithRetry();
 
 // Real-time sync polling (checks for Drive changes every 30s)
+let collabPollTimer = null;
 let driveLastModified = null;
 let drivePollTimer = null;
 
@@ -212,18 +213,25 @@ async function syncCollaborationData() {
 
 function startDrivePolling() {
     stopDrivePolling();
+    // Background sync for main file (15s)
     drivePollTimer = setInterval(async () => {
-        const changed = await pullCloudChanges();
-        if (changed) {
-            window.showToast('📲 Data updated from another device');
-        }
-    }, 15000); // Check every 15s for responsive cross-device sync
+        await pullCloudChanges();
+    }, 15000);
+
+    // High-frequency sync for shared/collaborative data (5s)
+    collabPollTimer = setInterval(async () => {
+        await syncCollaborationData();
+    }, 5000);
 }
 
 function stopDrivePolling() {
     if (drivePollTimer) {
         clearInterval(drivePollTimer);
         drivePollTimer = null;
+    }
+    if (collabPollTimer) {
+        clearInterval(collabPollTimer);
+        collabPollTimer = null;
     }
 }
 

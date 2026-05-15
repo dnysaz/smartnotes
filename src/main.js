@@ -977,32 +977,45 @@ function renderRecent() {
                 
                 // Construct Avatar Stack
                 const avatars = [];
-                // 1. Add owner if available
-                if (item.ownerPicture) avatars.push({ src: item.ownerPicture, initial: 'O' });
-                // 2. Add current user if they are not the owner
-                if (state.userProfile?.picture && state.userProfile.picture !== item.ownerPicture) {
-                    avatars.push({ src: state.userProfile.picture, initial: state.userProfile.name?.[0] || 'U' });
+                const currentUserPic = state.userProfile?.picture;
+                const ownerPic = item.ownerPicture;
+
+                if (ownerPic) {
+                    avatars.push({ src: ownerPic, initial: item.ownerName?.[0] || 'O' });
                 }
                 
-                // 3. If still empty, add placeholders to show it's collaborative
-                if (avatars.length === 0) {
-                    avatars.push({ src: '', initial: 'C' });
-                    avatars.push({ src: '', initial: '?' });
-                } else if (avatars.length === 1) {
-                    avatars.push({ src: '', initial: '+' });
+                if (currentUserPic && currentUserPic !== ownerPic) {
+                    avatars.push({ src: currentUserPic, initial: state.userProfile.name?.[0] || 'U' });
+                }
+                
+                // Legacy fix: if ownerPic is missing but current user is the owner/creator
+                if (avatars.length === 0 && currentUserPic) {
+                    avatars.push({ src: currentUserPic, initial: 'Me' });
+                }
+                
+                // Ensure we always have at least 2 for the "Audi" effect
+                if (avatars.length === 1) {
+                    avatars.push({ src: `https://ui-avatars.com/api/?name=Collab&background=random&color=fff`, initial: '+' });
+                } else if (avatars.length === 0) {
+                    avatars.push({ src: `https://ui-avatars.com/api/?name=User&background=random&color=fff`, initial: 'U' });
+                    avatars.push({ src: `https://ui-avatars.com/api/?name=Partner&background=random&color=fff`, initial: 'P' });
                 }
                 
                 const avatarStackHtml = `
-                    <div class="flex -space-x-2 items-center">
+                    <div class="flex -space-x-3 items-center">
                         ${avatars.slice(0, 4).map(av => {
+                            const size = "w-8 h-8";
                             if (av.src) {
-                                return `<img src="${av.src}" class="w-6 h-6 rounded-full border-2 border-white object-cover shadow-sm" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                                        <div class="hidden w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-blue-500">${av.initial}</div>`;
+                                return `
+                                    <div class="relative ${size} rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-50">
+                                        <img src="${av.src}" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                        <div class="hidden w-full h-full items-center justify-center text-[10px] font-bold text-blue-500 bg-blue-50">${av.initial}</div>
+                                    </div>`;
                             } else {
-                                return `<div class="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-gray-400">${av.initial}</div>`;
+                                return `<div class="${size} rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-bold text-gray-400">${av.initial}</div>`;
                             }
                         }).join('')}
-                        ${avatars.length > 4 ? `<div class="w-6 h-6 rounded-full bg-gray-50 border-2 border-white flex items-center justify-center text-[8px] font-bold text-gray-400">+${avatars.length - 4}</div>` : ''}
+                        ${avatars.length > 4 ? `<div class="w-8 h-8 rounded-full bg-gray-50 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-bold text-gray-500">+${avatars.length - 4}</div>` : ''}
                     </div>
                 `;
 

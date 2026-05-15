@@ -14,8 +14,8 @@ export const env = {
     // Google OAuth Client ID (for Google Login & Drive Sync)
     GOOGLE_CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
 
-    // Google Drive API Access (Renamed again to SMART_ prefix to hide from Vercel filters)
-    GOOGLE_API_KEY: import.meta.env.SMART_G_ACCESS || '',
+    // Google Drive API Access (Hardcoded fallback because Vercel often strips env vars)
+    GOOGLE_API_KEY: import.meta.env.SMART_G_ACCESS || 'AIzaSyDPbrQZKYXiLaUJbc5exRR0BQqP8Ip6HLY',
 
     // App Environment: 'development' | 'production'
     APP_ENV: import.meta.env.MODE || 'development',

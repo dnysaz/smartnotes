@@ -898,9 +898,9 @@ function renderRecent() {
     const query = state.searchQuery.toLowerCase();
     
     let all = [
-        ...filteredNotes.map(n => ({...n, type: 'note', isAdopted: !!n.adoptedFrom})),
-        ...filteredTodos.map(t => ({...t, type: 'todo', isAdopted: !!t.adoptedFrom})),
-        ...state.financialRecords.map(f => ({...f, type: 'financial', isAdopted: false}))
+        ...filteredNotes.map(n => ({...n, type: 'note', isCollaborative: n.isCollaborative || !!n.adoptedFrom})),
+        ...filteredTodos.map(t => ({...t, type: 'todo', isCollaborative: t.isCollaborative || !!t.adoptedFrom})),
+        ...state.financialRecords.map(f => ({...f, type: 'financial', isCollaborative: false}))
     ];
 
     // Live Search Filtering
@@ -965,28 +965,34 @@ function renderRecent() {
             const isNote = item.type === 'note';
             const isTodo = item.type === 'todo';
             const isFinancial = item.type === 'financial';
-            const isAdopted = item.isAdopted;
+            const isCollaborative = item.isCollaborative;
             const isSelected = state.selectedIds.has(item.id);
             const isList = state.viewMode === 'list';
             const dateObj = new Date(item.timestamp);
 
-            if (isAdopted) {
+            if (isCollaborative) {
                 div.className = isList 
-                    ? "group bg-white p-4 rounded-3xl flex items-center gap-4 active:scale-95 transition-all border border-blue-100/50"
+                    ? "group bg-white p-4 rounded-3xl flex items-center gap-4 active:scale-95 transition-all border border-blue-100/50 shadow-sm shadow-blue-500/5"
                     : "group bg-white p-6 rounded-[32px] flex flex-col justify-between aspect-square active:scale-95 transition-all border border-blue-100/50 shadow-sm shadow-blue-500/5";
                 
                 div.innerHTML = `
                     <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 mb-2">
-                            <div class="p-1.5 bg-blue-50 text-blue-500 rounded-lg">
-                                <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <div class="flex -space-x-1.5">
+                                    <div class="w-4 h-4 rounded-full bg-blue-100 border border-white flex items-center justify-center text-[6px] text-blue-500 font-bold">A</div>
+                                    <div class="w-4 h-4 rounded-full bg-indigo-100 border border-white flex items-center justify-center text-[6px] text-indigo-500 font-bold">B</div>
+                                </div>
+                                <span class="text-[10px] font-bold text-blue-400 tracking-tight">Collaborative</span>
                             </div>
-                            <span class="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Collaborative</span>
                         </div>
-                        <h5 class="text-sm font-bold text-[#1D1D1F] line-clamp-3 leading-tight">${item.title || item.content || 'Shared Content'}</h5>
+                        <h5 class="text-sm font-bold text-[#1D1D1F] line-clamp-3 leading-tight">${item.title || item.content || 'Untitled'}</h5>
                     </div>
                     <div class="mt-4 flex items-center justify-between">
-                        <span class="text-[10px] text-gray-300">${dateObj.toLocaleDateString()}</span>
+                        <span class="text-[10px] text-gray-300 font-medium">${dateObj.toLocaleDateString()}</span>
+                        <div class="w-6 h-6 bg-blue-50 text-blue-400 rounded-lg flex items-center justify-center">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                        </div>
                     </div>
                 `;
                 div.onclick = () => {
@@ -1740,6 +1746,17 @@ window.handleMenuShare = async () => {
         
         // Create public share file on Drive
         const fileId = await createPublicShare(shareData);
+
+        // Mark original item as collaborative
+        if (contentType === 'note') {
+            const note = state.notes.find(n => n.id === state.currentNoteId);
+            if (note) { note.isCollaborative = true; note.shareId = fileId; }
+        } else if (contentType === 'todo') {
+            const todo = state.todos.find(t => t.id === state.currentTodoId);
+            if (todo) { todo.isCollaborative = true; todo.shareId = fileId; }
+        }
+        saveData();
+
         const shareUrl = `${window.location.origin}/#share=${fileId}`;
 
         // Show QR Modal

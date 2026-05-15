@@ -133,37 +133,41 @@ function getAvatarStackHtml(item) {
         isOwner: true 
     });
     
-    // 2. Collaborators
+    // 2. Collaborators (show everyone)
     if (Array.isArray(item.collaborators)) {
-        item.collaborators.filter(c => c.email !== state.userProfile?.email).forEach(c => {
-            avatars.push({ 
-                src: c.picture || '', 
-                initial: c.name?.[0] || 'C' 
-            });
+        item.collaborators.forEach(c => {
+            // Avoid duplicate owner if they are in collaborators list
+            if (c.email !== item.ownerEmail) {
+                avatars.push({ 
+                    src: c.picture || '', 
+                    initial: c.name?.[0] || 'C' 
+                });
+            }
         });
     }
     
-    // 3. Me (if adopter)
-    if (item.adoptedFrom && state.userProfile?.picture) {
-        if (!avatars.find(a => a.src === state.userProfile.picture)) {
-            avatars.push({ 
-                src: state.userProfile.picture, 
-                initial: state.userProfile.name?.[0] || 'U' 
-            });
+    // Ensure uniqueness by email if possible
+    const uniqueAvatars = [];
+    const seen = new Set();
+    avatars.forEach(av => {
+        const key = av.src || av.initial;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueAvatars.push(av);
         }
-    }
+    });
 
-    if (avatars.length <= 1) return '';
+    if (uniqueAvatars.length === 0) return '';
 
     return `
-        <div class="flex -space-x-2.5 items-center">
-            ${avatars.slice(0, 4).map(av => `
+        <div class="flex -space-x-2.5 items-center justify-center">
+            ${uniqueAvatars.slice(0, 5).map(av => `
                 <div class="relative w-8 h-8 rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-50 flex-shrink-0">
                     ${av.src ? `<img src="${av.src}" class="w-full h-full object-cover" onerror="this.nextElementSibling.classList.remove('hidden'); this.remove();">` : ''}
                     <div class="${av.src ? 'hidden' : ''} w-full h-full flex items-center justify-center text-[10px] font-black text-blue-500 bg-blue-50 uppercase">${av.initial}</div>
                 </div>
             `).join('')}
-            ${avatars.length > 4 ? `<div class="w-8 h-8 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-bold text-gray-500">+${avatars.length - 4}</div>` : ''}
+            ${uniqueAvatars.length > 5 ? `<div class="w-8 h-8 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-bold text-gray-500">+${uniqueAvatars.length - 5}</div>` : ''}
         </div>
     `;
 }
@@ -261,11 +265,13 @@ async function syncCollaborationData() {
                     }
                 }
 
-                // 3. Sync Avatars in Header (if view is open)
-                if (updated && (state.currentNoteId === item.id || state.currentTodoId === item.id)) {
+                // 3. Sync Avatars in Header (Always update if view is open)
+                if (state.currentNoteId === item.id || state.currentTodoId === item.id) {
                     const avatarsHtml = getAvatarStackHtml(item);
                     const container = document.getElementById(state.currentNoteId === item.id ? 'note-avatars-container' : 'todo-avatars-container');
-                    if (container) container.innerHTML = avatarsHtml;
+                    if (container && container.innerHTML !== avatarsHtml) {
+                        container.innerHTML = avatarsHtml;
+                    }
                 }
             }
         } catch (e) {

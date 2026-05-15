@@ -497,45 +497,43 @@ export async function createPublicShare(shareData) {
 export async function fetchPublicShare(fileId) {
     if (!fileId) return null;
     
-    try {
-        // Use a more robust GAPI request pattern
-        // Providing a relative path ensures GAPI attaches our API key/token correctly
-        const response = await gapi.client.request({
-            path: `/drive/v3/files/${fileId}`,
-            method: 'GET',
-            params: { 
-                alt: 'media',
-                supportsAllDrives: true // Better support for various share types
-            }
-        });
-        
-        if (response && response.result) {
-            const data = response.result;
-            return typeof data === 'string' ? JSON.parse(data) : data;
-        }
-    } catch (e) {
-        console.error("[Drive] Failed to fetch public share content", e);
-        
-        // If 403, it might be an API key restriction or login required
-        // Let's try to at least get metadata to see if the file exists
+    // Attempt multiple times in case of propagation delay
+    for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-            const meta = await gapi.client.drive.files.get({
+            // Use explicit GAPI client method which is most reliable
+            const response = await gapi.client.drive.files.get({
                 fileId: fileId,
-                fields: 'id, name',
+                alt: 'media',
                 supportsAllDrives: true
             });
-            console.log("[Drive] File metadata found, but content access denied. Login likely required.", meta.result);
-        } catch (mErr) {
-            console.error("[Drive] Even metadata fetch failed", mErr);
+            
+            if (response && response.result) {
+                const data = response.result;
+                return typeof data === 'string' ? JSON.parse(data) : data;
+            }
+        } catch (e) {
+            console.error(`[Drive] Fetch attempt ${attempt} failed`, e.result || e);
+            
+            // If it's a 404, maybe it's still propagating, wait a bit
+            if (attempt < 2) {
+                await new Promise(r => setTimeout(r, 1500));
+                continue;
+            }
         }
-
-        // Final fallback to fetch (unlikely to work due to CORS but good as last resort)
-        try {
-             const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${env.GOOGLE_API_KEY}`;
-             const res = await fetch(url);
-             if (res.ok) return await res.json();
-        } catch (f) { }
     }
+
+    // Final debug attempt: just get metadata
+    try {
+        const meta = await gapi.client.drive.files.get({
+            fileId: fileId,
+            fields: 'id, name, permissions',
+            supportsAllDrives: true
+        });
+        console.log("[Drive] Metadata found but content failed:", meta.result);
+    } catch (mErr) {
+        console.error("[Drive] Metadata check also failed", mErr.result || mErr);
+    }
+
     return null;
 }
 /**

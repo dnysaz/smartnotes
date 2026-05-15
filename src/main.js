@@ -774,6 +774,7 @@ function renderTodoView() {
                 actionContainer.classList.add('invisible', 'pointer-events-none');
             }
             
+            todo.timestamp = new Date().toISOString();
             saveData();
         });
         setTimeout(adjustHeight, 0);
@@ -788,6 +789,7 @@ function renderTodoView() {
                 e.preventDefault();
                 if (todo.items.length > 1) {
                     todo.items.splice(index, 1);
+                    todo.timestamp = new Date().toISOString();
                     renderTodoView();
                     // Focus previous item if exists
                     setTimeout(() => {
@@ -804,6 +806,7 @@ function renderTodoView() {
         const checkbox = itemEl.querySelector('.todo-checkbox');
         checkbox.addEventListener('change', (e) => {
             item.done = e.target.checked;
+            todo.timestamp = new Date().toISOString();
             renderTodoView();
             saveData();
         });
@@ -811,6 +814,7 @@ function renderTodoView() {
         const deleteBtn = itemEl.querySelector('.delete-btn');
         deleteBtn.addEventListener('click', () => {
             todo.items.splice(index, 1);
+            todo.timestamp = new Date().toISOString();
             renderTodoView();
             saveData();
         });
@@ -823,6 +827,7 @@ todoTitleInput.addEventListener('blur', (e) => {
     const todo = state.todos.find(t => t.id === state.currentTodoId);
     if (todo) {
         todo.title = e.target.value;
+        todo.timestamp = new Date().toISOString();
         saveData();
     }
 });
@@ -835,6 +840,7 @@ function addTodoItem(insertIndex = -1) {
         // If an index is provided, insert below it. Otherwise insert at top.
         const newIndex = insertIndex >= 0 ? insertIndex + 1 : 0;
         todo.items.splice(newIndex, 0, { text: '', done: false });
+        todo.timestamp = new Date().toISOString();
         
         renderTodoView();
         

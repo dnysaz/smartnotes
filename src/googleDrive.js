@@ -488,15 +488,6 @@ export async function createPublicShare(shareData) {
             });
             console.log('[Drive] Permissions verified for:', fileId, pRes.result);
         } catch (pErr) {
-            await gapi.client.drive.permissions.create({
-                fileId: fileId,
-                resource: {
-                    type: 'anyone',
-                    role: 'writer'
-                }
-            });
-            console.log('[Drive] Created public share with writer perms:', fileId);
-        } catch (pErr) {
             console.error('[Drive] FAILED to set public writer permissions. Organization might block public sharing.', pErr);
             // Try fallback to 'reader'
             try {

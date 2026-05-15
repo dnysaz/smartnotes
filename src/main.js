@@ -119,6 +119,7 @@ let drivePollTimer = null;
 async function pullCloudChanges() {
     if (!state.isLoggedIn) return false;
     try {
+        let changed = false;
         const modifiedTime = await checkDriveForUpdates();
         if (modifiedTime && modifiedTime !== driveLastModified) {
             driveLastModified = modifiedTime;
@@ -132,11 +133,14 @@ async function pullCloudChanges() {
                     initFinancial(state, switchView, saveData);
                 }
                 console.log('[Drive] Cross-device sync: merged changes');
-                return true; // Data changed
+                changed = true;
             }
+        }
+
         if (changed) {
             window.showToast('📲 Data updated from another device');
         }
+        
         await syncCollaborators(); // Check for new adopters
         return changed;
     } catch (e) {

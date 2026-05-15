@@ -116,6 +116,58 @@ let collabPollTimer = null;
 let driveLastModified = null;
 let drivePollTimer = null;
 
+/**
+ * Shared UI Helper: Generate Avatar Stack (Audi style)
+ */
+function getAvatarStackHtml(item) {
+    if (!item.isShared && !item.isCollaborative && !item.adoptedFrom) return '';
+    
+    const avatars = [];
+    const ownerPic = item.ownerPicture;
+    const ownerName = item.ownerName || 'Owner';
+    
+    // 1. Owner
+    avatars.push({ 
+        src: ownerPic || '', 
+        initial: ownerName[0],
+        isOwner: true 
+    });
+    
+    // 2. Collaborators
+    if (Array.isArray(item.collaborators)) {
+        item.collaborators.filter(c => c.email !== state.userProfile?.email).forEach(c => {
+            avatars.push({ 
+                src: c.picture || '', 
+                initial: c.name?.[0] || 'C' 
+            });
+        });
+    }
+    
+    // 3. Me (if adopter)
+    if (item.adoptedFrom && state.userProfile?.picture) {
+        if (!avatars.find(a => a.src === state.userProfile.picture)) {
+            avatars.push({ 
+                src: state.userProfile.picture, 
+                initial: state.userProfile.name?.[0] || 'U' 
+            });
+        }
+    }
+
+    if (avatars.length <= 1) return '';
+
+    return `
+        <div class="flex -space-x-2.5 items-center">
+            ${avatars.slice(0, 4).map(av => `
+                <div class="relative w-8 h-8 rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-50 flex-shrink-0">
+                    ${av.src ? `<img src="${av.src}" class="w-full h-full object-cover" onerror="this.nextElementSibling.classList.remove('hidden'); this.remove();">` : ''}
+                    <div class="${av.src ? 'hidden' : ''} w-full h-full flex items-center justify-center text-[10px] font-black text-blue-500 bg-blue-50 uppercase">${av.initial}</div>
+                </div>
+            `).join('')}
+            ${avatars.length > 4 ? `<div class="w-8 h-8 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-bold text-gray-500">+${avatars.length - 4}</div>` : ''}
+        </div>
+    `;
+}
+
 // Shared function to pull cloud changes
 async function pullCloudChanges() {
     if (!state.isLoggedIn) return false;
@@ -207,6 +259,13 @@ async function syncCollaborationData() {
                             renderTodoView();
                         }
                     }
+                }
+
+                // 3. Sync Avatars in Header (if view is open)
+                if (updated && (state.currentNoteId === item.id || state.currentTodoId === item.id)) {
+                    const avatarsHtml = getAvatarStackHtml(item);
+                    const container = document.getElementById(state.currentNoteId === item.id ? 'note-avatars-container' : 'todo-avatars-container');
+                    if (container) container.innerHTML = avatarsHtml;
                 }
             }
         } catch (e) {
@@ -772,6 +831,11 @@ function loadNote(id) {
         state.currentNoteId = id;
         noteEditor.value = note.content;
         updateNoteHighlight();
+        
+        // Show avatars in header
+        const avatarContainer = document.getElementById('note-avatars-container');
+        if (avatarContainer) avatarContainer.innerHTML = getAvatarStackHtml(note);
+
         switchView('note-view');
     }
 }
@@ -845,6 +909,10 @@ function renderTodoView() {
 
     todoTitleInput.value = todo.title;
     todoItemsContainer.innerHTML = '';
+    
+    // Show avatars in header
+    const avatarContainer = document.getElementById('todo-avatars-container');
+    if (avatarContainer) avatarContainer.innerHTML = getAvatarStackHtml(todo);
     
     todo.items.forEach((item, index) => {
         const itemEl = document.createElement('div');
@@ -1066,62 +1134,14 @@ function renderRecent() {
                     ? "group bg-white p-4 rounded-3xl flex items-center gap-4 active:scale-95 transition-all border border-blue-100/50 shadow-sm shadow-blue-500/5"
                     : "group bg-white p-6 rounded-[32px] flex flex-col justify-between aspect-square active:scale-95 transition-all border border-blue-100/50 shadow-sm shadow-blue-500/5";
                 
-                // Construct Avatar Stack
-                const avatars = [];
-                const ownerPic = item.ownerPicture;
-                
-                // 1. Add owner (always count them)
-                avatars.push({ 
-                    src: ownerPic || '', 
-                    initial: (item.ownerName?.[0] || 'O'),
-                    isOwner: true 
-                });
-                
-                // 2. Add actual collaborators from the tracked list
-                const actualCollaborators = (item.collaborators && Array.isArray(item.collaborators)) 
-                    ? item.collaborators.filter(c => c.email !== state.userProfile?.email)
-                    : [];
-
-                actualCollaborators.forEach(c => {
-                    avatars.push({ 
-                        src: c.picture || '', 
-                        initial: c.name?.[0] || 'C' 
-                    });
-                });
-                
-                // 3. If I am an adopter (not owner), ensure my avatar is in the stack
-                if (item.adoptedFrom && state.userProfile?.picture) {
-                    if (!avatars.find(a => a.src === state.userProfile.picture)) {
-                        avatars.push({ 
-                            src: state.userProfile.picture, 
-                            initial: state.userProfile.name?.[0] || 'U' 
-                        });
-                    }
-                }
-                
                 // STATUS LOGIC:
                 const isTrulyCollaborative = (item.collaborators && item.collaborators.length > 0);
                 const isOwner = !item.adoptedFrom;
                 const statusLabel = isTrulyCollaborative ? 'Collaborative' : 'Shared';
                 const statusColor = isTrulyCollaborative ? 'text-blue-500' : 'text-gray-400';
                 
-                // Ensure avatars list is robust
-                const displayAvatars = [...avatars];
-                const hasCollaborators = displayAvatars.length > 1;
-
-                const avatarStackHtml = hasCollaborators ? `
-                    <div class="flex -space-x-2.5 items-center mr-1">
-                        ${displayAvatars.slice(0, 4).map(av => {
-                            const size = "w-7 h-7";
-                            return `
-                                <div class="relative ${size} rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-50 flex-shrink-0">
-                                    ${av.src ? `<img src="${av.src}" class="w-full h-full object-cover" onerror="this.nextElementSibling.classList.remove('hidden'); this.remove();">` : ''}
-                                    <div class="${av.src ? 'hidden' : ''} w-full h-full flex items-center justify-center text-[9px] font-black text-blue-500 bg-blue-50 uppercase">${av.initial}</div>
-                                </div>`;
-                        }).join('')}
-                        ${displayAvatars.length > 4 ? `<div class="w-7 h-7 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center text-[9px] font-bold text-gray-500">+${displayAvatars.length - 4}</div>` : ''}
-                    </div>
-                ` : '';
+                const avatarStackHtml = getAvatarStackHtml(item);
+                const hasCollaborators = avatarStackHtml.length > 0;
 
                 if (isList) {
                     div.innerHTML = `

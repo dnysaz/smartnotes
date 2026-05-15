@@ -1023,25 +1023,39 @@ function renderRecent() {
                 // Construct Avatar Stack
                 const avatars = [];
                 const ownerPic = item.ownerPicture;
-                if (ownerPic) avatars.push({ src: ownerPic, initial: 'O' });
                 
-                // Add actual collaborators from the tracked list
+                // 1. Add owner (always count them)
+                avatars.push({ 
+                    src: ownerPic || '', 
+                    initial: (item.ownerName?.[0] || 'O'),
+                    isOwner: true 
+                });
+                
+                // 2. Add actual collaborators from the tracked list
                 if (item.collaborators && Array.isArray(item.collaborators)) {
                     item.collaborators.forEach(c => {
-                        if (c.picture && !avatars.find(a => a.src === c.picture)) {
-                            avatars.push({ src: c.picture, initial: c.name?.[0] || 'C' });
-                        }
+                        // Avoid duplicates if owner is also in collaborators list
+                        if (c.email && c.email === state.userProfile?.email) return; 
+                        if (c.picture && avatars.find(a => a.src === c.picture)) return;
+                        
+                        avatars.push({ 
+                            src: c.picture || '', 
+                            initial: c.name?.[0] || 'C' 
+                        });
                     });
                 }
                 
-                // If I am an adopter (not owner), ensure my avatar is in the stack
+                // 3. If I am an adopter (not owner), ensure my avatar is in the stack
                 if (item.adoptedFrom && state.userProfile?.picture) {
                     if (!avatars.find(a => a.src === state.userProfile.picture)) {
-                        avatars.push({ src: state.userProfile.picture, initial: state.userProfile.name?.[0] || 'U' });
+                        avatars.push({ 
+                            src: state.userProfile.picture, 
+                            initial: state.userProfile.name?.[0] || 'U' 
+                        });
                     }
                 }
                 
-                // Collaborative if more than 1 person (Owner + Adopters)
+                // Collaborative if more than 1 person total
                 const hasCollaborators = avatars.length > 1;
                 const statusLabel = hasCollaborators ? 'Collaborative' : 'Shared';
                 const statusColor = hasCollaborators ? 'text-blue-500' : 'text-gray-400';

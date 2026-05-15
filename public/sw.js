@@ -27,19 +27,29 @@ self.addEventListener('activate', (event) => {
   self.clients.claim(); // Take control of all open clients immediately
 });
 
-// Network First Strategy
+// Fetch logic: Network-first, fallback to cache
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  
+  // CRITICAL: Bypass Service Worker for external APIs (Google Drive, etc.)
+  // and non-GET requests to avoid CORS and auth interference
+  if (url.origin !== self.location.origin || event.request.method !== 'GET') {
+    return; // Let the browser handle it normally
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // If network request is successful, update cache and return response
-        return caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, response.clone());
-          return response;
-        });
+        // Only cache successful local responses
+        if (response && response.status === 200 && response.type === 'basic') {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return response;
       })
       .catch(() => {
-        // If network fails, try to serve from cache
         return caches.match(event.request);
       })
   );

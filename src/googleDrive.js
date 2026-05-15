@@ -461,33 +461,39 @@ export async function createPublicShare(shareData) {
         };
         const fileContent = JSON.stringify(shareData);
 
-        // Create file
-        const res = await gapi.client.request({
-            path: '/upload/drive/v3/files',
-            method: 'POST',
-            params: { 
-                uploadType: 'multipart',
-                fields: 'id'
-            },
-            body: `--foo\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--foo\r\nContent-Type: application/json\r\n\r\n${fileContent}\r\n--foo--`,
-            headers: { 'Content-Type': 'multipart/related; boundary=foo' }
+        // 1. Create file metadata
+        const metadata = {
+            name: `share_${Date.now()}.json`,
+            mimeType: 'application/json',
+            parents: [folderId]
+        };
+        const fileContent = JSON.stringify(shareData);
+
+        // 2. Create the file (metadata only)
+        const createRes = await gapi.client.drive.files.create({
+            resource: metadata,
+            fields: 'id'
+        });
+        const fileId = createRes.result.id;
+
+        // 3. Upload content (media)
+        await gapi.client.request({
+            path: `/upload/drive/v3/files/${fileId}`,
+            method: 'PATCH',
+            params: { uploadType: 'media' },
+            body: fileContent
         });
 
-        const fileId = res.result.id;
-
-        // Make it public (anyone with link can read)
+        // 4. Make it public (anyone with link can read)
         await gapi.client.drive.permissions.create({
             fileId: fileId,
             resource: {
                 type: 'anyone',
-                role: 'reader',
-                allowFileDiscovery: false
+                role: 'reader'
             }
         });
 
-        // Small delay to ensure propagation
-        await new Promise(resolve => setTimeout(resolve, 500));
-
+        console.log('[Drive] Created public share:', fileId);
         return fileId;
     });
 }
@@ -497,17 +503,34 @@ export async function createPublicShare(shareData) {
  * Uses direct fetch for maximum reliability with public files.
  */
 export async function fetchPublicShare(fileId) {
-    try {
-        const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${env.GOOGLE_API_KEY}`;
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+    if (!fileId) return null;
+    
+    // Attempt multiple times in case of propagation delay
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${env.GOOGLE_API_KEY}`;
+            const response = await fetch(url);
+            
+            if (response.ok) {
+                return await response.json();
+            }
+            
+            console.warn(`[Drive] Fetch attempt ${attempt + 1} failed: ${response.status}`);
+            
+            // If 403/404, maybe gapi can do better if user happens to be owner
+            if (gapiInited) {
+                try {
+                    const gRes = await gapi.client.drive.files.get({ fileId, alt: 'media' });
+                    if (gRes.result) return typeof gRes.result === 'string' ? JSON.parse(gRes.result) : gRes.result;
+                } catch (ge) {
+                    // Ignore gapi failure
+                }
+            }
+        } catch (e) {
+            console.error(`[Drive] Fetch attempt ${attempt + 1} error:`, e);
         }
         
-        return await response.json();
-    } catch (e) {
-        console.error("[Drive] Failed to fetch public share", e);
-        return null;
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
     }
+    return null;
 }

@@ -181,20 +181,30 @@ async function syncCollaborationData() {
                     }
                 }
                 
-                // 2. Sync Content (Only if NOT currently being edited by US, to avoid cursor jumps)
-                // Or merge if we are not the last writer
-                const isEditingThis = (state.currentNoteId === item.id || state.currentTodoId === item.id);
+                // 2. Sync Content
+                const isNote = remoteData.ty === 'note';
+                const isTodo = remoteData.ty === 'todo';
                 
-                if (!isEditingThis) {
-                    if (remoteData.ty === 'note' && remoteData.c !== item.content) {
-                        item.content = remoteData.c;
+                if (isNote && remoteData.c !== item.content) {
+                    item.content = remoteData.c;
+                    updated = true;
+                    // Live update editor if open and user is not currently typing
+                    if (state.currentNoteId === item.id) {
+                        const editor = document.getElementById('note-editor');
+                        if (editor && document.activeElement !== editor) {
+                            editor.value = item.content;
+                            if (typeof updateNoteHighlight === 'function') updateNoteHighlight();
+                        }
+                    }
+                } else if (isTodo) {
+                    const remoteItemsStr = JSON.stringify(remoteData.c);
+                    const localItemsStr = JSON.stringify(item.items);
+                    if (remoteItemsStr !== localItemsStr) {
+                        item.items = remoteData.c;
                         updated = true;
-                    } else if (remoteData.ty === 'todo') {
-                        const remoteItemsStr = JSON.stringify(remoteData.c);
-                        const localItemsStr = JSON.stringify(item.items);
-                        if (remoteItemsStr !== localItemsStr) {
-                            item.items = remoteData.c;
-                            updated = true;
+                        // Live update todo view if open
+                        if (state.currentTodoId === item.id && typeof renderTodoView === 'function') {
+                            renderTodoView();
                         }
                     }
                 }

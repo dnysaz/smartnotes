@@ -461,14 +461,6 @@ export async function createPublicShare(shareData) {
         };
         const fileContent = JSON.stringify(shareData);
 
-        // 1. Create file metadata
-        const metadata = {
-            name: `share_${Date.now()}.json`,
-            mimeType: 'application/json',
-            parents: [folderId]
-        };
-        const fileContent = JSON.stringify(shareData);
-
         // 2. Create the file (metadata only)
         const createRes = await gapi.client.drive.files.create({
             resource: metadata,

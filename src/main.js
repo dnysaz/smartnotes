@@ -116,6 +116,15 @@ let collabPollTimer = null;
 let driveLastModified = null;
 let drivePollTimer = null;
 
+function getInitials(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
 /**
  * Shared UI Helper: Generate Avatar Stack (Audi style)
  */
@@ -129,7 +138,7 @@ function getAvatarStackHtml(item) {
     // 1. Owner
     avatars.push({ 
         src: ownerPic || '', 
-        initial: ownerName[0],
+        initial: getInitials(ownerName),
         isOwner: true 
     });
     
@@ -140,7 +149,7 @@ function getAvatarStackHtml(item) {
             if (c.email !== item.ownerEmail) {
                 avatars.push({ 
                     src: c.picture || '', 
-                    initial: c.name?.[0] || 'C' 
+                    initial: getInitials(c.name)
                 });
             }
         });
@@ -2002,7 +2011,9 @@ window.handleMenuShare = async () => {
             if (note) { 
                 note.isShared = true; 
                 note.shareId = fileId; 
+                note.ownerName = state.userProfile?.name || 'Owner';
                 note.ownerPicture = state.userProfile?.picture;
+                note.ownerEmail = state.userProfile?.email;
                 note.collaborators = [];
             }
         } else if (contentType === 'todo') {
@@ -2010,7 +2021,9 @@ window.handleMenuShare = async () => {
             if (todo) { 
                 todo.isShared = true; 
                 todo.shareId = fileId; 
+                todo.ownerName = state.userProfile?.name || 'Owner';
                 todo.ownerPicture = state.userProfile?.picture;
+                todo.ownerEmail = state.userProfile?.email;
                 todo.collaborators = [];
             }
         }
@@ -2217,7 +2230,9 @@ window.handleAdopt = async () => {
             timestamp: new Date().toISOString(),
             pinned: false,
             adoptedFrom: shareId,
+            ownerName: data.owner?.name || 'Owner',
             ownerPicture: data.owner?.picture || '',
+            ownerEmail: data.owner?.email || '',
             collaborators: collaborators // Store current list
         };
 

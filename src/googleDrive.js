@@ -457,16 +457,17 @@ export async function createPublicShare(shareData) {
         const metadata = {
             name: `share_${Date.now()}.json`,
             mimeType: 'application/json',
-            parents: [folderId]
+            parents: ['root'] // Root is more reliable for public sharing via API
         };
         const fileContent = JSON.stringify(shareData);
 
         // 2. Create the file (metadata only)
         const createRes = await gapi.client.drive.files.create({
             resource: metadata,
-            fields: 'id'
+            fields: 'id, webViewLink'
         });
         const fileId = createRes.result.id;
+        console.log('[Drive] Created file in root:', fileId);
 
         // 3. Upload content (media)
         await gapi.client.request({
@@ -478,6 +479,15 @@ export async function createPublicShare(shareData) {
 
         // 4. Make it collaborative (anyone with link can write)
         try {
+            const pRes = await gapi.client.drive.permissions.create({
+                fileId: fileId,
+                resource: {
+                    type: 'anyone',
+                    role: 'writer'
+                }
+            });
+            console.log('[Drive] Permissions verified for:', fileId, pRes.result);
+        } catch (pErr) {
             await gapi.client.drive.permissions.create({
                 fileId: fileId,
                 resource: {

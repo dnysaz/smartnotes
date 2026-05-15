@@ -1738,7 +1738,7 @@ async function renderShareMode() {
                 contentContainer.innerHTML = `
                     <div class="p-6 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm">
                         <p class="font-bold mb-2">API Configuration Missing</p>
-                        <p>VITE_G_ACCESS is not defined in the environment variables. Please check your Vercel settings and redeploy.</p>
+                        <p>SMART_G_ACCESS is not defined in the environment variables. Please check your Vercel settings and redeploy.</p>
                     </div>
                 `;
             }

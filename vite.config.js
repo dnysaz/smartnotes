@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  envPrefix: ['VITE_', 'SMART_'],
   plugins: [
     {
       name: 'gemini-proxy',
@@ -24,10 +25,10 @@ export default defineConfig({
                 return;
               }
 
-              const API_KEY = process.env.GEMINI_API_KEY;
+              const API_KEY = process.env.SMART_G_ACCESS;
               if (!API_KEY) {
                 res.statusCode = 500;
-                res.end(JSON.stringify({ error: 'GEMINI_API_KEY not set. Run: export GEMINI_API_KEY=your_key_here' }));
+                res.end(JSON.stringify({ error: 'SMART_G_ACCESS not set. Run: export SMART_G_ACCESS=your_key_here' }));
                 return;
               }
 

@@ -977,15 +977,32 @@ function renderRecent() {
                 
                 // Construct Avatar Stack
                 const avatars = [];
-                if (item.ownerPicture) avatars.push(item.ownerPicture);
-                if (state.userProfile?.picture && state.userProfile.picture !== item.ownerPicture) avatars.push(state.userProfile.picture);
-                // Add some dummy ones to show the "stack" effect for demo if it's the only one
-                if (avatars.length === 1) avatars.push('https://ui-avatars.com/api/?name=User&background=random');
+                // 1. Add owner if available
+                if (item.ownerPicture) avatars.push({ src: item.ownerPicture, initial: 'O' });
+                // 2. Add current user if they are not the owner
+                if (state.userProfile?.picture && state.userProfile.picture !== item.ownerPicture) {
+                    avatars.push({ src: state.userProfile.picture, initial: state.userProfile.name?.[0] || 'U' });
+                }
+                
+                // 3. If still empty, add placeholders to show it's collaborative
+                if (avatars.length === 0) {
+                    avatars.push({ src: '', initial: 'C' });
+                    avatars.push({ src: '', initial: '?' });
+                } else if (avatars.length === 1) {
+                    avatars.push({ src: '', initial: '+' });
+                }
                 
                 const avatarStackHtml = `
-                    <div class="flex -space-x-2">
-                        ${avatars.slice(0, 4).map(src => `<img src="${src}" class="w-5 h-5 rounded-full border-2 border-white object-cover">`).join('')}
-                        ${avatars.length > 4 ? `<div class="w-5 h-5 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-[6px] font-bold text-gray-500">+${avatars.length - 4}</div>` : ''}
+                    <div class="flex -space-x-2 items-center">
+                        ${avatars.slice(0, 4).map(av => {
+                            if (av.src) {
+                                return `<img src="${av.src}" class="w-6 h-6 rounded-full border-2 border-white object-cover shadow-sm" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                        <div class="hidden w-6 h-6 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-blue-500">${av.initial}</div>`;
+                            } else {
+                                return `<div class="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-gray-400">${av.initial}</div>`;
+                            }
+                        }).join('')}
+                        ${avatars.length > 4 ? `<div class="w-6 h-6 rounded-full bg-gray-50 border-2 border-white flex items-center justify-center text-[8px] font-bold text-gray-400">+${avatars.length - 4}</div>` : ''}
                     </div>
                 `;
 

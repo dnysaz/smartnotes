@@ -465,21 +465,28 @@ export async function createPublicShare(shareData) {
         const res = await gapi.client.request({
             path: '/upload/drive/v3/files',
             method: 'POST',
-            params: { uploadType: 'multipart' },
+            params: { 
+                uploadType: 'multipart',
+                fields: 'id'
+            },
             body: `--foo\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--foo\r\nContent-Type: application/json\r\n\r\n${fileContent}\r\n--foo--`,
             headers: { 'Content-Type': 'multipart/related; boundary=foo' }
         });
 
         const fileId = res.result.id;
 
-        // Make it public
+        // Make it public (anyone with link can read)
         await gapi.client.drive.permissions.create({
             fileId: fileId,
             resource: {
                 type: 'anyone',
-                role: 'reader'
+                role: 'reader',
+                allowFileDiscovery: false
             }
         });
+
+        // Small delay to ensure propagation
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         return fileId;
     });
@@ -487,11 +494,18 @@ export async function createPublicShare(shareData) {
 
 /**
  * Fetches a public shared file using only the API key (no login required).
+ * Uses direct fetch for maximum reliability with public files.
  */
 export async function fetchPublicShare(fileId) {
     try {
-        const file = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
-        return typeof file.result === 'string' ? JSON.parse(file.result) : file.result;
+        const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${env.GOOGLE_API_KEY}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        return await response.json();
     } catch (e) {
         console.error("[Drive] Failed to fetch public share", e);
         return null;

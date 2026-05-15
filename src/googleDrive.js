@@ -443,3 +443,57 @@ export function debouncedSyncToDrive(data) {
         });
     }, SYNC_DEBOUNCE_MS);
 }
+
+/**
+ * Creates a public file in the app folder for sharing.
+ * Returns the Google Drive fileId.
+ */
+export async function createPublicShare(shareData) {
+    if (!_tokenReady) throw new Error("Not logged in");
+    
+    return await withSilentRetry(async () => {
+        const folderId = await getOrCreateAppFolder();
+        
+        const metadata = {
+            name: `share_${Date.now()}.json`,
+            mimeType: 'application/json',
+            parents: [folderId]
+        };
+        const fileContent = JSON.stringify(shareData);
+
+        // Create file
+        const res = await gapi.client.request({
+            path: '/upload/drive/v3/files',
+            method: 'POST',
+            params: { uploadType: 'multipart' },
+            body: `--foo\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--foo\r\nContent-Type: application/json\r\n\r\n${fileContent}\r\n--foo--`,
+            headers: { 'Content-Type': 'multipart/related; boundary=foo' }
+        });
+
+        const fileId = res.result.id;
+
+        // Make it public
+        await gapi.client.drive.permissions.create({
+            fileId: fileId,
+            resource: {
+                type: 'anyone',
+                role: 'reader'
+            }
+        });
+
+        return fileId;
+    });
+}
+
+/**
+ * Fetches a public shared file using only the API key (no login required).
+ */
+export async function fetchPublicShare(fileId) {
+    try {
+        const file = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
+        return typeof file.result === 'string' ? JSON.parse(file.result) : file.result;
+    } catch (e) {
+        console.error("[Drive] Failed to fetch public share", e);
+        return null;
+    }
+}

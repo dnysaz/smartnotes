@@ -1,7 +1,7 @@
 import './style.css';
 import { initFinancial } from './financial.js';
 import { checkEnv } from './env.js';
-import { initDriveSync, authenticateGoogle, syncToDrive, loadFromDrive, checkDriveForUpdates, trySilentRefresh, debouncedSyncToDrive, restoreSession, isTokenReady } from './googleDrive.js';
+import { initDriveSync, authenticateGoogle, syncToDrive, loadFromDrive, checkDriveForUpdates, trySilentRefresh, debouncedSyncToDrive, restoreSession, isTokenReady, createPublicShare, fetchPublicShare } from './googleDrive.js';
 
 // --- View Templates ---
 import { authView }      from './views/auth.view.js';
@@ -1659,6 +1659,11 @@ window.closeQR = () => {
 };
 
 window.handleMenuShare = async () => {
+    if (!state.isLoggedIn) {
+        window.showToast('Please login to Google Drive to use sharing.');
+        return;
+    }
+
     let content = "";
     let title = "";
     let contentType = 'note';
@@ -1674,7 +1679,6 @@ window.handleMenuShare = async () => {
         const todo = state.todos.find(t => t.id === state.currentTodoId);
         if (todo) {
             title = todo.title || "Shared Todo";
-            // For backward compatibility keep the text format, but also encode type
             content = JSON.stringify(todo.items);
             contentType = 'todo';
         }
@@ -1683,14 +1687,12 @@ window.handleMenuShare = async () => {
     if (!content) return;
 
     try {
+        window.showToast('Generating share link...');
         const shareData = { t: title, c: content, d: new Date().toLocaleDateString(), ty: contentType };
-        // UTF-8 Safe Base64
-        const jsonStr = JSON.stringify(shareData);
-        const encodedData = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (match, p1) => {
-            return String.fromCharCode('0x' + p1);
-        }));
         
-        const shareUrl = `${window.location.origin}/#share=${encodedData}`;
+        // Create public share file on Drive
+        const fileId = await createPublicShare(shareData);
+        const shareUrl = `${window.location.origin}/#share=${fileId}`;
 
         // Show QR Modal
         const qrModal = document.getElementById('qr-modal');
@@ -1713,76 +1715,100 @@ window.handleMenuShare = async () => {
 
         await navigator.clipboard.writeText(shareUrl);
         window.closeNoteMenu();
+        window.showToast('Link copied to clipboard!');
     } catch (err) {
         console.error("Share failed:", err);
         window.showToast('Failed to generate share link.');
     }
 };
 
-function renderShareMode() {
+async function renderShareMode() {
     const hash = window.location.hash;
     if (hash.startsWith('#share=')) {
-        const encodedData = hash.replace('#share=', '');
+        const shareId = hash.replace('#share=', '');
+        
+        // Show loading state in title
+        const shareTitle = document.getElementById('share-title');
+        if (shareTitle) shareTitle.textContent = "Loading shared content...";
+        
+        // Hide main app
+        const app = document.getElementById('app');
+        if (app) app.classList.add('hidden');
+        const shareView = document.getElementById('share-public-view');
+        if (shareView) shareView.classList.remove('hidden');
+
         try {
-            // UTF-8 Safe Decoding
-            const decodedData = JSON.parse(decodeURIComponent(atob(encodedData).split('').map((c) => {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join('')));
-            
-            // Show Share View
-            const app = document.getElementById('app');
-            if (app) app.classList.add('hidden');
-            
-            const shareView = document.getElementById('share-public-view');
-            if (shareView) {
-                shareView.classList.remove('hidden');
-                document.getElementById('share-title').textContent = decodedData.t || "Shared Content";
-                
-                const contentContainer = document.getElementById('share-content');
-                contentContainer.innerHTML = ''; // clear previous
-                
-                let isTodo = decodedData.ty === 'todo';
-                let items = [];
-                
-                if (isTodo) {
-                    try {
-                        items = JSON.parse(decodedData.c);
-                    } catch(e) {
-                        isTodo = false;
-                    }
+            let decodedData = null;
+
+            // Try to fetch from Drive first (new system uses Drive fileId)
+            // Drive fileIds are usually ~33-44 chars. Legacy encoded JSON is much longer.
+            if (shareId.length < 100) {
+                decodedData = await fetchPublicShare(shareId);
+            }
+
+            // Fallback for old Base64 links
+            if (!decodedData) {
+                try {
+                    decodedData = JSON.parse(decodeURIComponent(atob(shareId).split('').map((c) => {
+                        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                    }).join('')));
+                } catch (e) {
+                    // Not a valid legacy share link
                 }
-                
-                if (isTodo && Array.isArray(items)) {
-                    // Render interactive (but read-only) todo list
-                    contentContainer.className = 'mt-4 flex flex-col gap-3 flex-1'; // apply some nice spacing
-                    items.forEach(item => {
-                        const div = document.createElement('div');
-                        div.className = "flex items-start gap-4 p-4 bg-[#F5F5F7] rounded-2xl";
-                        
-                        // Prevent cross-site scripting by using textContent for the text part
-                        const checkbox = document.createElement('input');
-                        checkbox.type = 'checkbox';
-                        checkbox.checked = item.done;
-                        checkbox.disabled = true;
-                        checkbox.className = "mt-0.5 w-6 h-6 rounded-full border-gray-300 text-blue-500 bg-white focus:ring-0 cursor-default opacity-100";
-                        
-                        const span = document.createElement('span');
-                        span.className = `text-lg flex-1 leading-relaxed ${item.done ? 'line-through text-gray-400' : 'text-[#1D1D1F]'}`;
-                        span.textContent = item.text;
-                        
-                        div.appendChild(checkbox);
-                        div.appendChild(span);
-                        contentContainer.appendChild(div);
-                    });
-                } else {
-                    // Render standard note
-                    contentContainer.className = 'text-lg text-gray-700 leading-relaxed whitespace-pre-wrap border-t border-gray-100 pt-6 flex-1';
-                    contentContainer.textContent = decodedData.c || "";
+            }
+
+            if (!decodedData) {
+                if (shareTitle) shareTitle.textContent = "Shared content not found";
+                return false;
+            }
+
+            // Render content
+            if (shareTitle) shareTitle.textContent = decodedData.t || "Shared Content";
+            
+            const contentContainer = document.getElementById('share-content');
+            contentContainer.innerHTML = ''; // clear previous
+            
+            let isTodo = decodedData.ty === 'todo';
+            let items = [];
+            
+            if (isTodo) {
+                try {
+                    items = typeof decodedData.c === 'string' ? JSON.parse(decodedData.c) : decodedData.c;
+                } catch(e) {
+                    isTodo = false;
                 }
+            }
+            
+            if (isTodo && Array.isArray(items)) {
+                // Render interactive (but read-only) todo list
+                contentContainer.className = 'mt-4 flex flex-col gap-3 flex-1'; // apply some nice spacing
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = "flex items-start gap-4 p-4 bg-[#F5F5F7] rounded-2xl";
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.checked = item.done;
+                    checkbox.disabled = true;
+                    checkbox.className = "mt-0.5 w-6 h-6 rounded-full border-gray-300 text-blue-500 bg-white focus:ring-0 cursor-default opacity-100";
+                    
+                    const span = document.createElement('span');
+                    span.className = `text-lg flex-1 leading-relaxed ${item.done ? 'line-through text-gray-400' : 'text-[#1D1D1F]'}`;
+                    span.textContent = item.text;
+                    
+                    div.appendChild(checkbox);
+                    div.appendChild(span);
+                    contentContainer.appendChild(div);
+                });
+            } else {
+                // Render standard note
+                contentContainer.className = 'text-lg text-gray-700 leading-relaxed whitespace-pre-wrap border-t border-gray-100 pt-6 flex-1';
+                contentContainer.textContent = decodedData.c || "";
             }
             return true;
         } catch (err) {
             console.error("Invalid share link:", err);
+            if (shareTitle) shareTitle.textContent = "Error loading content";
             return false;
         }
     }
@@ -1790,9 +1816,9 @@ function renderShareMode() {
 }
 
 // Listen for hash changes (e.g. scanning a new QR while app is open)
-window.addEventListener('hashchange', () => {
+window.addEventListener('hashchange', async () => {
     if (window.location.hash.startsWith('#share=')) {
-        renderShareMode();
+        await renderShareMode();
     } else if (window.location.hash === '') {
         // Go back to app if share cleared
         location.reload();
@@ -1829,11 +1855,11 @@ function updateViewToggleUI() {
 }
 updateViewToggleUI();
 
-window.initApp = () => {
+window.initApp = async () => {
     console.log("initApp running...");
     
     // 1. Check if we are in share mode first
-    if (renderShareMode()) {
+    if (await renderShareMode()) {
         console.log("Share mode active, skipping main app init");
         return;
     }

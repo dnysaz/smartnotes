@@ -1781,21 +1781,31 @@ async function renderShareMode() {
             }
             
             if (isTodo && Array.isArray(items)) {
-                // Render interactive (but read-only) todo list
+                // Render interactive (but local-only) todo list
                 contentContainer.className = 'mt-4 flex flex-col gap-3 flex-1'; // apply some nice spacing
                 items.forEach(item => {
                     const div = document.createElement('div');
-                    div.className = "flex items-start gap-4 p-4 bg-[#F5F5F7] rounded-2xl";
+                    div.className = "flex items-start gap-4 p-4 bg-[#F5F5F7] rounded-2xl cursor-pointer active:scale-[0.98] transition-all";
                     
                     const checkbox = document.createElement('input');
                     checkbox.type = 'checkbox';
                     checkbox.checked = item.done;
-                    checkbox.disabled = true;
-                    checkbox.className = "mt-0.5 w-6 h-6 rounded-full border-gray-300 text-blue-500 bg-white focus:ring-0 cursor-default opacity-100";
+                    checkbox.className = "mt-0.5 w-6 h-6 rounded-full border-gray-300 text-blue-500 bg-white focus:ring-0 cursor-pointer opacity-100";
                     
                     const span = document.createElement('span');
                     span.className = `text-lg flex-1 leading-relaxed ${item.done ? 'line-through text-gray-400' : 'text-[#1D1D1F]'}`;
                     span.textContent = item.text;
+
+                    const toggle = (e) => {
+                        if (e.target !== checkbox) checkbox.checked = !checkbox.checked;
+                        if (checkbox.checked) {
+                            span.className = "text-lg flex-1 leading-relaxed line-through text-gray-400";
+                        } else {
+                            span.className = "text-lg flex-1 leading-relaxed text-[#1D1D1F]";
+                        }
+                    };
+                    
+                    div.onclick = toggle;
                     
                     div.appendChild(checkbox);
                     div.appendChild(span);
@@ -1805,6 +1815,17 @@ async function renderShareMode() {
                 // Render standard note
                 contentContainer.className = 'text-lg text-gray-700 leading-relaxed whitespace-pre-wrap border-t border-gray-100 pt-6 flex-1';
                 contentContainer.textContent = decodedData.c || "";
+            }
+
+            // Add read-only notice to footer
+            const shareView = document.getElementById('share-public-view');
+            const shareFooter = shareView.querySelector('.mt-auto');
+            if (shareFooter && !document.getElementById('share-read-only-notice')) {
+                const notice = document.createElement('p');
+                notice.id = 'share-read-only-notice';
+                notice.className = 'text-[10px] text-gray-300 mt-1 text-center italic';
+                notice.textContent = 'This is a read-only preview. Changes here won\'t affect the original file.';
+                shareFooter.prepend(notice);
             }
             return true;
         } catch (err) {

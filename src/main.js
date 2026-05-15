@@ -898,8 +898,8 @@ function renderRecent() {
     const query = state.searchQuery.toLowerCase();
     
     let all = [
-        ...filteredNotes.map(n => ({...n, type: 'note', isCollaborative: n.isCollaborative || !!n.adoptedFrom})),
-        ...filteredTodos.map(t => ({...t, type: 'todo', isCollaborative: t.isCollaborative || !!t.adoptedFrom})),
+        ...filteredNotes.map(n => ({...n, type: 'note', isCollaborative: (n.collaborators && n.collaborators.length > 0) || (n.adoptedFrom)})),
+        ...filteredTodos.map(t => ({...t, type: 'todo', isCollaborative: (t.collaborators && t.collaborators.length > 0) || (t.adoptedFrom)})),
         ...state.financialRecords.map(f => ({...f, type: 'financial', isCollaborative: false}))
     ];
 
@@ -966,64 +966,60 @@ function renderRecent() {
             const isTodo = item.type === 'todo';
             const isFinancial = item.type === 'financial';
             const isCollaborative = item.isCollaborative;
+            const isShared = item.isShared || item.isCollaborative;
             const isSelected = state.selectedIds.has(item.id);
             const isList = state.viewMode === 'list';
             const dateObj = new Date(item.timestamp);
 
-            if (isCollaborative) {
+            if (isShared) {
                 div.className = isList 
                     ? "group bg-white p-4 rounded-3xl flex items-center gap-4 active:scale-95 transition-all border border-blue-100/50 shadow-sm shadow-blue-500/5"
                     : "group bg-white p-6 rounded-[32px] flex flex-col justify-between aspect-square active:scale-95 transition-all border border-blue-100/50 shadow-sm shadow-blue-500/5";
                 
                 // Construct Avatar Stack
                 const avatars = [];
-                const currentUserPic = state.userProfile?.picture;
                 const ownerPic = item.ownerPicture;
+                if (ownerPic) avatars.push({ src: ownerPic, initial: 'O' });
+                
+                // Add actual collaborators
+                if (item.collaborators && Array.isArray(item.collaborators)) {
+                    item.collaborators.forEach(c => {
+                        if (c.picture && c.picture !== ownerPic) {
+                            avatars.push({ src: c.picture, initial: c.name?.[0] || 'C' });
+                        }
+                    });
+                }
+                
+                // If I am not the owner but am collaborating (adopter)
+                if (item.adoptedFrom && state.userProfile?.picture && state.userProfile.picture !== ownerPic) {
+                    if (!avatars.find(a => a.src === state.userProfile.picture)) {
+                        avatars.push({ src: state.userProfile.picture, initial: state.userProfile.name?.[0] || 'U' });
+                    }
+                }
+                
+                const hasCollaborators = avatars.length > 1;
+                const statusLabel = hasCollaborators ? 'Collaborative' : 'Shared';
+                const statusColor = hasCollaborators ? 'text-blue-500' : 'text-gray-400';
 
-                if (ownerPic) {
-                    avatars.push({ src: ownerPic, initial: item.ownerName?.[0] || 'O' });
-                }
-                
-                if (currentUserPic && currentUserPic !== ownerPic) {
-                    avatars.push({ src: currentUserPic, initial: state.userProfile.name?.[0] || 'U' });
-                }
-                
-                // Legacy fix: if ownerPic is missing but current user is the owner/creator
-                if (avatars.length === 0 && currentUserPic) {
-                    avatars.push({ src: currentUserPic, initial: 'Me' });
-                }
-                
-                // Ensure we always have at least 2 for the "Audi" effect
-                if (avatars.length === 1) {
-                    avatars.push({ src: `https://ui-avatars.com/api/?name=Collab&background=random&color=fff`, initial: '+' });
-                } else if (avatars.length === 0) {
-                    avatars.push({ src: `https://ui-avatars.com/api/?name=User&background=random&color=fff`, initial: 'U' });
-                    avatars.push({ src: `https://ui-avatars.com/api/?name=Partner&background=random&color=fff`, initial: 'P' });
-                }
-                
-                const avatarStackHtml = `
+                const avatarStackHtml = hasCollaborators ? `
                     <div class="flex -space-x-3 items-center">
                         ${avatars.slice(0, 4).map(av => {
                             const size = "w-8 h-8";
-                            if (av.src) {
-                                return `
-                                    <div class="relative ${size} rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-50">
-                                        <img src="${av.src}" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                                        <div class="hidden w-full h-full items-center justify-center text-[10px] font-bold text-blue-500 bg-blue-50">${av.initial}</div>
-                                    </div>`;
-                            } else {
-                                return `<div class="${size} rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-bold text-gray-400">${av.initial}</div>`;
-                            }
+                            return `
+                                <div class="relative ${size} rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-50">
+                                    ${av.src ? `<img src="${av.src}" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : ''}
+                                    <div class="${av.src ? 'hidden' : ''} w-full h-full items-center justify-center text-[10px] font-bold text-blue-500 bg-blue-50">${av.initial}</div>
+                                </div>`;
                         }).join('')}
                         ${avatars.length > 4 ? `<div class="w-8 h-8 rounded-full bg-gray-50 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-bold text-gray-500">+${avatars.length - 4}</div>` : ''}
                     </div>
-                `;
+                ` : '';
 
                 if (isList) {
                     div.innerHTML = `
                         <div class="flex-1 min-w-0">
                             <h5 class="text-sm font-bold text-[#1D1D1F] truncate">${item.title || item.content || 'Untitled'}</h5>
-                            <span class="text-[10px] text-blue-400 font-bold">Collaborative</span>
+                            <span class="text-[10px] ${statusColor} font-bold">${statusLabel}</span>
                         </div>
                         <div class="flex items-center gap-3">
                             ${avatarStackHtml}
@@ -1034,8 +1030,8 @@ function renderRecent() {
                     div.innerHTML = `
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between mb-3">
-                                <span class="text-[10px] font-bold text-blue-400 tracking-tight">Collaborative</span>
-                                <div class="w-6 h-6 bg-blue-50 text-blue-400 rounded-lg flex items-center justify-center">
+                                <span class="text-[10px] font-bold ${statusColor} tracking-tight">${statusLabel}</span>
+                                <div class="w-6 h-6 ${hasCollaborators ? 'bg-blue-50 text-blue-400' : 'bg-gray-50 text-gray-300'} rounded-lg flex items-center justify-center">
                                     <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
                                 </div>
                             </div>
@@ -1054,6 +1050,7 @@ function renderRecent() {
                 };
                 grid.appendChild(div);
                 return;
+            }
             }
             const shortDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -1809,20 +1806,22 @@ window.handleMenuShare = async () => {
         // Create public share file on Drive
         const fileId = await createPublicShare(shareData);
 
-        // Mark original item as collaborative
+        // Mark original item as shared
         if (contentType === 'note') {
             const note = state.notes.find(n => n.id === state.currentNoteId);
             if (note) { 
-                note.isCollaborative = true; 
+                note.isShared = true; 
                 note.shareId = fileId; 
                 note.ownerPicture = state.userProfile?.picture;
+                note.collaborators = [];
             }
         } else if (contentType === 'todo') {
             const todo = state.todos.find(t => t.id === state.currentTodoId);
             if (todo) { 
-                todo.isCollaborative = true; 
+                todo.isShared = true; 
                 todo.shareId = fileId; 
                 todo.ownerPicture = state.userProfile?.picture;
+                todo.collaborators = [];
             }
         }
         saveData();
@@ -2006,13 +2005,30 @@ window.handleAdopt = async () => {
     const data = await fetchPublicShare(shareId);
     
     if (data) {
+        // Add self to collaborators list in the shared file
+        const collaborators = Array.isArray(data.collaborators) ? data.collaborators : [];
+        const self = {
+            name: state.userProfile?.name || 'Collaborator',
+            picture: state.userProfile?.picture || '',
+            email: state.userProfile?.email || ''
+        };
+        
+        if (!collaborators.find(c => c.email === self.email)) {
+            collaborators.push(self);
+        }
+        
+        // Update the public share file with new collaborator list
+        const updatedData = { ...data, collaborators };
+        await updatePublicShare(shareId, updatedData);
+
         const isTodo = data.ty === 'todo';
         const newItem = {
             id: 'adopted_' + Date.now(),
             timestamp: new Date().toISOString(),
             pinned: false,
             adoptedFrom: shareId,
-            ownerPicture: data.owner?.picture || '' // Store owner's avatar
+            ownerPicture: data.owner?.picture || '',
+            collaborators: collaborators // Store current list
         };
 
         if (isTodo) {

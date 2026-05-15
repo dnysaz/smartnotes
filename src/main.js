@@ -1,6 +1,6 @@
 import './style.css';
 import { initFinancial } from './financial.js';
-import { checkEnv } from './env.js';
+import { env, checkEnv } from './env.js';
 import { initDriveSync, authenticateGoogle, syncToDrive, loadFromDrive, checkDriveForUpdates, trySilentRefresh, debouncedSyncToDrive, restoreSession, isTokenReady, createPublicShare, fetchPublicShare } from './googleDrive.js';
 
 // --- View Templates ---

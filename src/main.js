@@ -1915,7 +1915,7 @@ window.handleAdopt = async () => {
     const hash = window.location.hash;
     const shareId = hash.replace('#share=', '');
     
-    window.showToast("Adopting content...");
+    window.showToast("🚀 Adopting content...");
     const data = await fetchPublicShare(shareId);
     
     if (data) {
@@ -1924,7 +1924,7 @@ window.handleAdopt = async () => {
             id: 'adopted_' + Date.now(),
             timestamp: new Date().toISOString(),
             pinned: false,
-            adoptedFrom: shareId, // Critical for collaboration
+            adoptedFrom: shareId,
         };
 
         if (isTodo) {
@@ -1938,12 +1938,14 @@ window.handleAdopt = async () => {
 
         saveData();
         window.closeShareActions();
-        window.showConfirmModal("Success!", "Content adopted! You can now find it in your main list. Changes will be synced with the owner.", "Great", null, true);
+        window.showToast("✅ Successfully adopted!");
         
-        // Go to home after adoption
-        setTimeout(() => location.href = '/', 1500);
+        // Immediate redirect to home to show the new item
+        setTimeout(() => {
+            window.location.href = '/';
+        }, 800);
     } else {
-        window.showToast("Failed to adopt content.");
+        window.showToast("❌ Failed to adopt content.");
     }
 };
 

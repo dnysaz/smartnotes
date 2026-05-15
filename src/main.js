@@ -1054,23 +1054,26 @@ function renderRecent() {
                 }
                 
                 // STATUS LOGIC:
-                // If it's adopted (I am the adopter) OR has actual collaborators (I am the owner)
-                const isTrulyCollaborative = item.adoptedFrom || actualCollaborators.length > 0;
+                const isTrulyCollaborative = (item.collaborators && item.collaborators.length > 0);
+                const isOwner = !item.adoptedFrom;
                 const statusLabel = isTrulyCollaborative ? 'Collaborative' : 'Shared';
                 const statusColor = isTrulyCollaborative ? 'text-blue-500' : 'text-gray-400';
-                const hasCollaborators = avatars.length > 1;
+                
+                // Ensure avatars list is robust
+                const displayAvatars = [...avatars];
+                const hasCollaborators = displayAvatars.length > 1;
 
                 const avatarStackHtml = hasCollaborators ? `
-                    <div class="flex -space-x-2.5 items-center">
-                        ${avatars.slice(0, 4).map(av => {
+                    <div class="flex -space-x-2.5 items-center mr-1">
+                        ${displayAvatars.slice(0, 4).map(av => {
                             const size = "w-7 h-7";
                             return `
-                                <div class="relative ${size} rounded-full border-2 border-white shadow-sm overflow-hidden bg-white">
-                                    ${av.src ? `<img src="${av.src}" class="w-full h-full object-cover" onerror="this.parentElement.querySelector('div').classList.remove('hidden'); this.remove();">` : ''}
+                                <div class="relative ${size} rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-50 flex-shrink-0">
+                                    ${av.src ? `<img src="${av.src}" class="w-full h-full object-cover" onerror="this.nextElementSibling.classList.remove('hidden'); this.remove();">` : ''}
                                     <div class="${av.src ? 'hidden' : ''} w-full h-full flex items-center justify-center text-[9px] font-black text-blue-500 bg-blue-50 uppercase">${av.initial}</div>
                                 </div>`;
                         }).join('')}
-                        ${avatars.length > 4 ? `<div class="w-7 h-7 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center text-[9px] font-bold text-gray-500">+${avatars.length - 4}</div>` : ''}
+                        ${displayAvatars.length > 4 ? `<div class="w-7 h-7 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center text-[9px] font-bold text-gray-500">+${displayAvatars.length - 4}</div>` : ''}
                     </div>
                 ` : '';
 
@@ -1080,28 +1083,40 @@ function renderRecent() {
                             <h5 class="text-sm font-bold text-[#1D1D1F] truncate">${item.title || item.content || 'Untitled'}</h5>
                             <span class="text-[10px] ${statusColor} font-bold">${statusLabel}</span>
                         </div>
-                        <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-4">
                             ${avatarStackHtml}
                             <div class="text-[10px] text-gray-300 font-medium">${dateObj.toLocaleDateString()}</div>
                             <div class="flex items-center gap-1">
-                                <button class="pin-btn p-2 transition-all ${item.pinned ? 'text-blue-500' : 'text-gray-200 hover:text-gray-400'}" data-id="${item.id}" data-type="${item.type}">
+                                <button class="pin-btn p-2 transition-all ${item.pinned ? 'text-blue-500' : 'text-gray-200 hover:text-gray-400'}" 
+                                        onclick="event.stopPropagation(); window.togglePin('${item.id}', '${item.type}')">
                                     <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" /></svg>
                                 </button>
-                                <button class="single-delete-btn p-2 text-gray-200 hover:text-red-500 transition-all" data-id="${item.id}" data-type="${item.type}">
-                                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                </button>
+                                ${isOwner ? `
+                                    <button class="single-delete-btn p-2 text-gray-200 hover:text-red-500 transition-all" 
+                                            onclick="event.stopPropagation(); window.deleteSharedItem('${item.id}', '${item.type}')">
+                                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
+                                ` : `
+                                    <div class="p-2 text-gray-200" title="Only owner can delete">
+                                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                    </div>
+                                `}
                             </div>
                         </div>
                     `;
                 } else {
                     div.innerHTML = `
-                        <div class="hover-action flex gap-2">
-                            <button class="pin-btn p-1.5 bg-white rounded-full transition-all ${item.pinned ? 'text-blue-500 border border-blue-100' : 'text-gray-300 border border-gray-100'}" data-id="${item.id}" data-type="${item.type}">
+                        <div class="hover-action flex gap-2" onclick="event.stopPropagation()">
+                            <button class="pin-btn p-1.5 bg-white rounded-full transition-all ${item.pinned ? 'text-blue-500 border border-blue-100' : 'text-gray-300 border border-gray-100'}" 
+                                    onclick="window.togglePin('${item.id}', '${item.type}')">
                                 <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" /></svg>
                             </button>
-                            <button class="single-delete-btn p-1.5 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all border border-red-100" data-id="${item.id}" data-type="${item.type}">
-                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </button>
+                            ${isOwner ? `
+                                <button class="single-delete-btn p-1.5 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all border border-red-100" 
+                                        onclick="window.deleteSharedItem('${item.id}', '${item.type}')">
+                                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                </button>
+                            ` : ''}
                         </div>
 
                         <div class="flex-1 min-w-0">
@@ -1262,6 +1277,34 @@ function updateBulkDeleteUI() {
         btn.classList.add('hidden');
     }
 }
+
+window.deleteSharedItem = (id, type) => {
+    window.showConfirm({
+        title: "Delete Shared Note",
+        message: "This note is shared/collaborative. Deleting it will remove it from your cloud storage. Continue?",
+        confirmText: "Delete",
+        isDestructive: true,
+        onConfirm: () => {
+            deleteItem(id, type);
+            // If it has a shareId, we should ideally delete from Drive too, 
+            // but for now, removing from local sync is enough as owner.
+            window.showToast("Deleted from local and cloud sync");
+        }
+    });
+};
+
+window.togglePin = (id, type) => {
+    let item;
+    if (type === 'note') item = state.notes.find(n => n.id === id);
+    else if (type === 'todo') item = state.todos.find(t => t.id === id);
+    else if (type === 'financial') item = state.financialRecords.find(f => f.id === id);
+    
+    if (item) {
+        item.pinned = !item.pinned;
+        saveData();
+        renderRecent();
+    }
+};
 
 function deleteItem(id, type) {
     let itemToDelete;

@@ -1854,11 +1854,34 @@ function mergeCloudData(cloud) {
     if (cloud.notes) state.notes = mergeArray(state.notes, cloud.notes);
     if (cloud.todos) state.todos = mergeArray(state.todos, cloud.todos);
     if (cloud.financialRecords) state.financialRecords = mergeArray(state.financialRecords, cloud.financialRecords);
+    
+    // Prevent locally trashed items from being resurrected by old cloud data (Race condition fix)
+    const localTrashedIds = new Set(state.trash.map(t => t.id));
+    state.notes = state.notes.filter(n => !localTrashedIds.has(n.id));
+    state.todos = state.todos.filter(t => !localTrashedIds.has(t.id));
+    state.financialRecords = state.financialRecords.filter(f => !localTrashedIds.has(f.id));
+
     if (cloud.trash) {
         // Items deleted on another device → remove from active lists
         const cloudTrashedIds = new Set(cloud.trash.map(t => t.id));
         state.notes = state.notes.filter(n => !cloudTrashedIds.has(n.id));
         state.todos = state.todos.filter(t => !cloudTrashedIds.has(t.id));
+        state.financialRecords = state.financialRecords.filter(f => !cloudTrashedIds.has(f.id));
+
+        // If an item is NOT in cloud.trash, it might have been permanently deleted / emptied on another device.
+        // We remove it from local trash, UNLESS it was just deleted locally (newer than the last cloud state).
+        const cloudTime = driveLastModified ? new Date(driveLastModified).getTime() : 0;
+        const cloudTrashMap = new Map(cloud.trash.map(t => [t.id, t]));
+        
+        state.trash = state.trash.filter(item => {
+            if (cloudTrashMap.has(item.id)) return true; // Still in cloud
+            const deletedAt = item.deletedAt ? new Date(item.deletedAt).getTime() : 0;
+            // If deleted locally very recently, keep it (hasn't synced yet)
+            if (deletedAt >= cloudTime - 60000) return true;
+            // Otherwise, it was emptied from the cloud
+            return false;
+        });
+
         state.trash = mergeArray(state.trash, cloud.trash);
     }
 

@@ -498,14 +498,14 @@ export async function fetchPublicShare(fileId) {
     if (!fileId) return null;
     
     try {
-        // Use gapi.client.request instead of fetch to avoid CORS issues
-        // GAPI library handles cross-origin requests via its own internal proxy/iframe
+        // Use a more robust GAPI request pattern
+        // Providing a relative path ensures GAPI attaches our API key/token correctly
         const response = await gapi.client.request({
-            path: `https://www.googleapis.com/drive/v3/files/${fileId}`,
+            path: `/drive/v3/files/${fileId}`,
             method: 'GET',
             params: { 
                 alt: 'media',
-                key: env.GOOGLE_API_KEY 
+                supportsAllDrives: true // Better support for various share types
             }
         });
         
@@ -514,16 +514,27 @@ export async function fetchPublicShare(fileId) {
             return typeof data === 'string' ? JSON.parse(data) : data;
         }
     } catch (e) {
-        console.error("[Drive] Failed to fetch public share via gapi", e);
+        console.error("[Drive] Failed to fetch public share content", e);
         
-        // Final fallback if gapi is not ready or failed (though this might hit CORS)
+        // If 403, it might be an API key restriction or login required
+        // Let's try to at least get metadata to see if the file exists
+        try {
+            const meta = await gapi.client.drive.files.get({
+                fileId: fileId,
+                fields: 'id, name',
+                supportsAllDrives: true
+            });
+            console.log("[Drive] File metadata found, but content access denied. Login likely required.", meta.result);
+        } catch (mErr) {
+            console.error("[Drive] Even metadata fetch failed", mErr);
+        }
+
+        // Final fallback to fetch (unlikely to work due to CORS but good as last resort)
         try {
              const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${env.GOOGLE_API_KEY}`;
              const res = await fetch(url);
              if (res.ok) return await res.json();
-        } catch (f) {
-             console.error("[Drive] Fetch fallback also failed", f);
-        }
+        } catch (f) { }
     }
     return null;
 }

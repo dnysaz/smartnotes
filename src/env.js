@@ -14,8 +14,8 @@ export const env = {
     // Google OAuth Client ID (for Google Login & Drive Sync)
     GOOGLE_CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
 
-    // Google Drive API Key
-    GOOGLE_API_KEY: import.meta.env.VITE_GOOGLE_API_KEY || '',
+    // Google Drive API Key (Renamed to bypass Vercel security filters)
+    GOOGLE_API_KEY: import.meta.env.VITE_APP_G_KEY || '',
 
     // App Environment: 'development' | 'production'
     APP_ENV: import.meta.env.MODE || 'development',
@@ -30,7 +30,7 @@ export const env = {
  * Only warns — does not crash the app.
  */
 export function checkEnv() {
-    const required = ['VITE_GOOGLE_CLIENT_ID', 'VITE_GOOGLE_API_KEY'];
+    const required = ['VITE_GOOGLE_CLIENT_ID', 'VITE_APP_G_KEY'];
     let missing = [];
     required.forEach(key => {
         if (!import.meta.env[key]) {

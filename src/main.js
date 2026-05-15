@@ -134,11 +134,51 @@ async function pullCloudChanges() {
                 console.log('[Drive] Cross-device sync: merged changes');
                 return true; // Data changed
             }
+        if (changed) {
+            window.showToast('📲 Data updated from another device');
         }
+        await syncCollaborators(); // Check for new adopters
+        return changed;
     } catch (e) {
         console.warn('[Drive] Sync pull error (silent):', e.message);
     }
     return false;
+}
+
+/**
+ * Periodically checks shared files to see if anyone has adopted them.
+ */
+async function syncCollaborators() {
+    if (!state.isLoggedIn) return;
+    
+    const sharedItems = [
+        ...state.notes.filter(n => n.shareId && !n.adoptedFrom),
+        ...state.todos.filter(t => t.shareId && !t.adoptedFrom)
+    ];
+
+    if (sharedItems.length === 0) return;
+
+    let updated = false;
+    for (const item of sharedItems) {
+        try {
+            // Fetch shared file content to see latest collaborator list
+            const remoteData = await fetchPublicShare(item.shareId);
+            if (remoteData && Array.isArray(remoteData.collaborators)) {
+                const currentCount = (item.collaborators || []).length;
+                if (remoteData.collaborators.length !== currentCount) {
+                    item.collaborators = remoteData.collaborators;
+                    updated = true;
+                }
+            }
+        } catch (e) {
+            console.warn(`[Drive] Failed to sync collaborators for ${item.id}`, e);
+        }
+    }
+
+    if (updated) {
+        saveData();
+        renderRecent();
+    }
 }
 
 function startDrivePolling() {
@@ -981,37 +1021,38 @@ function renderRecent() {
                 const ownerPic = item.ownerPicture;
                 if (ownerPic) avatars.push({ src: ownerPic, initial: 'O' });
                 
-                // Add actual collaborators
+                // Add actual collaborators from the tracked list
                 if (item.collaborators && Array.isArray(item.collaborators)) {
                     item.collaborators.forEach(c => {
-                        if (c.picture && c.picture !== ownerPic) {
+                        if (c.picture && !avatars.find(a => a.src === c.picture)) {
                             avatars.push({ src: c.picture, initial: c.name?.[0] || 'C' });
                         }
                     });
                 }
                 
-                // If I am not the owner but am collaborating (adopter)
-                if (item.adoptedFrom && state.userProfile?.picture && state.userProfile.picture !== ownerPic) {
+                // If I am an adopter (not owner), ensure my avatar is in the stack
+                if (item.adoptedFrom && state.userProfile?.picture) {
                     if (!avatars.find(a => a.src === state.userProfile.picture)) {
                         avatars.push({ src: state.userProfile.picture, initial: state.userProfile.name?.[0] || 'U' });
                     }
                 }
                 
+                // Collaborative if more than 1 person (Owner + Adopters)
                 const hasCollaborators = avatars.length > 1;
                 const statusLabel = hasCollaborators ? 'Collaborative' : 'Shared';
                 const statusColor = hasCollaborators ? 'text-blue-500' : 'text-gray-400';
 
                 const avatarStackHtml = hasCollaborators ? `
-                    <div class="flex -space-x-3 items-center">
+                    <div class="flex -space-x-2.5 items-center">
                         ${avatars.slice(0, 4).map(av => {
-                            const size = "w-8 h-8";
+                            const size = "w-7 h-7";
                             return `
-                                <div class="relative ${size} rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-50">
-                                    ${av.src ? `<img src="${av.src}" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">` : ''}
-                                    <div class="${av.src ? 'hidden' : ''} w-full h-full items-center justify-center text-[10px] font-bold text-blue-500 bg-blue-50">${av.initial}</div>
+                                <div class="relative ${size} rounded-full border-2 border-white shadow-sm overflow-hidden bg-white">
+                                    ${av.src ? `<img src="${av.src}" class="w-full h-full object-cover" onerror="this.parentElement.querySelector('div').classList.remove('hidden'); this.remove();">` : ''}
+                                    <div class="${av.src ? 'hidden' : ''} w-full h-full flex items-center justify-center text-[9px] font-black text-blue-500 bg-blue-50 uppercase">${av.initial}</div>
                                 </div>`;
                         }).join('')}
-                        ${avatars.length > 4 ? `<div class="w-8 h-8 rounded-full bg-gray-50 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-bold text-gray-500">+${avatars.length - 4}</div>` : ''}
+                        ${avatars.length > 4 ? `<div class="w-7 h-7 rounded-full bg-gray-100 border-2 border-white shadow-sm flex items-center justify-center text-[9px] font-bold text-gray-500">+${avatars.length - 4}</div>` : ''}
                     </div>
                 ` : '';
 

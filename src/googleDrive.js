@@ -511,72 +511,76 @@ export async function createPublicShare(shareData) {
 export async function fetchPublicShare(fileId) {
     if (!fileId) return null;
     
-    // Attempt multiple times in case of propagation delay
+    // Attempt multiple times with different strategies
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
             console.log(`[Drive] Fetching share ${fileId} (Attempt ${attempt})...`);
             
-            // 1. Try explicit GAPI drive.files.get
-            // This is the most official way and handles token/apiKey automatically
-            const response = await gapi.client.drive.files.get({
-                fileId: fileId,
-                alt: 'media',
-                supportsAllDrives: true
-            });
+            let response;
+            if (attempt === 1) {
+                // Strategy 1: Standard GAPI get (uses current auth state)
+                response = await gapi.client.drive.files.get({
+                    fileId: fileId,
+                    alt: 'media',
+                    supportsAllDrives: true,
+                    acknowledgeAbuse: true // Often helps with public files
+                });
+            } else if (attempt === 2) {
+                // Strategy 2: Raw request with explicit params
+                // This sometimes bypasses issues with the discovery-doc wrapper
+                response = await gapi.client.request({
+                    path: `/drive/v3/files/${fileId}`,
+                    method: 'GET',
+                    params: { 
+                        alt: 'media', 
+                        supportsAllDrives: true,
+                        acknowledgeAbuse: true
+                    }
+                });
+            } else {
+                // Strategy 3: Direct metadata check then content
+                const meta = await gapi.client.drive.files.get({
+                    fileId: fileId,
+                    fields: 'id, name, webContentLink',
+                    supportsAllDrives: true
+                });
+                console.log("[Drive] Metadata found in last attempt:", meta.result.name);
+                
+                // If we get here, files.get alt=media is clearly failing.
+                // We'll try one final GAPI request but without the discovery doc's help
+                response = await gapi.client.request({
+                    path: `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+                    method: 'GET'
+                });
+            }
             
             if (response && response.result) {
                 const data = response.result;
+                // GAPI sometimes returns the object directly, sometimes a string
                 return typeof data === 'string' ? JSON.parse(data) : data;
             }
         } catch (e) {
             const status = e.status || (e.result && e.result.error && e.result.error.code);
-            console.warn(`[Drive] Fetch attempt ${attempt} failed with status ${status}`, e);
+            console.warn(`[Drive] Fetch attempt ${attempt} failed (Status: ${status})`, e);
             
-            // If 403/404, try a different approach in next attempt
-            if (attempt === 1) {
-                // Wait a bit for propagation
-                await new Promise(r => setTimeout(r, 1000));
-                continue;
-            }
-
-            if (attempt === 2) {
-                // Try raw gapi.client.request as a last-resort GAPI method
-                try {
-                    const rawRes = await gapi.client.request({
-                        path: `/drive/v3/files/${fileId}`,
-                        method: 'GET',
-                        params: { alt: 'media', supportsAllDrives: true }
-                    });
-                    if (rawRes && rawRes.result) {
-                        return typeof rawRes.result === 'string' ? JSON.parse(rawRes.result) : rawRes.result;
-                    }
-                } catch (rawErr) {
-                    console.warn("[Drive] Raw GAPI request also failed", rawErr);
-                }
-            }
+            // Wait for propagation or rate limits
+            await new Promise(r => setTimeout(r, 1000));
         }
     }
 
-    // FINAL DEBUG: Can we at least see the file?
-    try {
-        const meta = await gapi.client.drive.files.get({
-            fileId: fileId,
-            fields: 'id, name, permissions',
-            supportsAllDrives: true
-        });
-        console.log("[Drive] Final Debug: Metadata found!", meta.result);
-        
-        // If we found metadata but couldn't get media, it's a content-block (CORS or Auth)
-        // We'll try one last thing: direct fetch if we have an API Key
-        if (env.GOOGLE_API_KEY) {
-            try {
-                const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${env.GOOGLE_API_KEY}`;
-                const res = await fetch(url);
-                if (res.ok) return await res.json();
-            } catch (f) { }
+    // FINAL FALLBACK: If GAPI fails but we have an API Key, try a manual fetch 
+    // but with a special header that Google sometimes requires for media
+    if (env.GOOGLE_API_KEY) {
+        try {
+            console.log("[Drive] Attempting final manual fetch with API Key...");
+            const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${env.GOOGLE_API_KEY}`;
+            const res = await fetch(url, {
+                headers: { 'Accept': 'application/json' }
+            });
+            if (res.ok) return await res.json();
+        } catch (f) {
+            console.error("[Drive] Final manual fetch also failed", f);
         }
-    } catch (mErr) {
-        console.error("[Drive] Share ID seems invalid or totally inaccessible:", fileId);
     }
 
     return null;

@@ -1643,25 +1643,29 @@ window.closeQR = () => {
 window.handleMenuShare = async () => {
     let content = "";
     let title = "";
+    let contentType = 'note';
 
     if (state.currentView === 'note-view') {
         const note = state.notes.find(n => n.id === state.currentNoteId);
         if (note) {
             title = "Shared Note";
             content = note.content;
+            contentType = 'note';
         }
     } else if (state.currentView === 'todo-view') {
         const todo = state.todos.find(t => t.id === state.currentTodoId);
         if (todo) {
             title = todo.title || "Shared Todo";
-            content = todo.items.map(i => `${i.done ? '[x]' : '[ ]'} ${i.text}`).join('\n');
+            // For backward compatibility keep the text format, but also encode type
+            content = JSON.stringify(todo.items);
+            contentType = 'todo';
         }
     }
 
     if (!content) return;
 
     try {
-        const shareData = { t: title, c: content, d: new Date().toLocaleDateString() };
+        const shareData = { t: title, c: content, d: new Date().toLocaleDateString(), ty: contentType };
         // UTF-8 Safe Base64
         const jsonStr = JSON.stringify(shareData);
         const encodedData = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (match, p1) => {
@@ -1715,7 +1719,48 @@ function renderShareMode() {
             if (shareView) {
                 shareView.classList.remove('hidden');
                 document.getElementById('share-title').textContent = decodedData.t || "Shared Content";
-                document.getElementById('share-content').textContent = decodedData.c || "";
+                
+                const contentContainer = document.getElementById('share-content');
+                contentContainer.innerHTML = ''; // clear previous
+                
+                let isTodo = decodedData.ty === 'todo';
+                let items = [];
+                
+                if (isTodo) {
+                    try {
+                        items = JSON.parse(decodedData.c);
+                    } catch(e) {
+                        isTodo = false;
+                    }
+                }
+                
+                if (isTodo && Array.isArray(items)) {
+                    // Render interactive (but read-only) todo list
+                    contentContainer.className = 'mt-4 flex flex-col gap-3 flex-1'; // apply some nice spacing
+                    items.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = "flex items-start gap-4 p-4 bg-[#F5F5F7] rounded-2xl";
+                        
+                        // Prevent cross-site scripting by using textContent for the text part
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.checked = item.done;
+                        checkbox.disabled = true;
+                        checkbox.className = "mt-0.5 w-6 h-6 rounded-full border-gray-300 text-blue-500 bg-white focus:ring-0 cursor-default opacity-100";
+                        
+                        const span = document.createElement('span');
+                        span.className = `text-lg flex-1 leading-relaxed ${item.done ? 'line-through text-gray-400' : 'text-[#1D1D1F]'}`;
+                        span.textContent = item.text;
+                        
+                        div.appendChild(checkbox);
+                        div.appendChild(span);
+                        contentContainer.appendChild(div);
+                    });
+                } else {
+                    // Render standard note
+                    contentContainer.className = 'text-lg text-gray-700 leading-relaxed whitespace-pre-wrap border-t border-gray-100 pt-6 flex-1';
+                    contentContainer.textContent = decodedData.c || "";
+                }
             }
             return true;
         } catch (err) {

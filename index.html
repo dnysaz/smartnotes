@@ -103,13 +103,14 @@
     </div>
 
     <!-- Public Share View (Hidden by default) -->
-    <div id="share-public-view" class="hidden fixed inset-0 z-[5000] bg-white overflow-y-auto p-8">
-        <div class="max-w-2xl mx-auto py-12">
-            <h1 id="share-title" class="text-4xl font-black text-[#1D1D1F] mb-8 tracking-tighter"></h1>
-            <div id="share-content" class="text-xl text-gray-700 leading-relaxed whitespace-pre-wrap border-t border-gray-100 pt-8"></div>
-            <div class="mt-20 pt-8 border-t border-gray-50 flex flex-col items-center gap-4">
-                <p class="text-[10px] font-black text-gray-300 uppercase tracking-[0.3em]">Shared via Smart Note</p>
-                <button onclick="location.href='/'" class="text-blue-500 font-bold text-sm">Create your own</button>
+    <div id="share-public-view" class="hidden fixed inset-0 z-[5000] bg-white overflow-y-auto">
+        <div class="max-w-2xl mx-auto px-8 py-12 flex flex-col min-h-full">
+            <h1 id="share-title" class="text-2xl font-black text-[#1D1D1F] mb-6 tracking-tight"></h1>
+            <div id="share-content" class="text-lg text-gray-700 leading-relaxed border-t border-gray-100 pt-6 flex-1"></div>
+            
+            <div class="mt-auto pt-12 pb-2 flex flex-col items-center gap-2">
+                <p class="text-sm text-gray-400">Shared via Smart Note</p>
+                <button onclick="location.href='/'" class="text-blue-500 font-medium text-sm">Create your own</button>
             </div>
         </div>
     </div>

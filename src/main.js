@@ -1024,10 +1024,27 @@ function renderRecent() {
                         <div class="flex items-center gap-3">
                             ${avatarStackHtml}
                             <div class="text-[10px] text-gray-300 font-medium">${dateObj.toLocaleDateString()}</div>
+                            <div class="flex items-center gap-1">
+                                <button class="pin-btn p-2 transition-all ${item.pinned ? 'text-blue-500' : 'text-gray-200 hover:text-gray-400'}" data-id="${item.id}" data-type="${item.type}">
+                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" /></svg>
+                                </button>
+                                <button class="single-delete-btn p-2 text-gray-200 hover:text-red-500 transition-all" data-id="${item.id}" data-type="${item.type}">
+                                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                </button>
+                            </div>
                         </div>
                     `;
                 } else {
                     div.innerHTML = `
+                        <div class="hover-action flex gap-2">
+                            <button class="pin-btn p-1.5 bg-white rounded-full transition-all ${item.pinned ? 'text-blue-500 border border-blue-100' : 'text-gray-300 border border-gray-100'}" data-id="${item.id}" data-type="${item.type}">
+                                <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" /></svg>
+                            </button>
+                            <button class="single-delete-btn p-1.5 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all border border-red-100" data-id="${item.id}" data-type="${item.type}">
+                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between mb-3">
                                 <span class="text-[10px] font-bold ${statusColor} tracking-tight">${statusLabel}</span>

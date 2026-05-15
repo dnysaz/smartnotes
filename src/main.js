@@ -1,7 +1,7 @@
 import './style.css';
 import { initFinancial } from './financial.js';
 import { checkEnv } from './env.js';
-import { initDriveSync, authenticateGoogle, syncToDrive, loadFromDrive, checkDriveForUpdates, trySilentRefresh } from './googleDrive.js';
+import { initDriveSync, authenticateGoogle, syncToDrive, loadFromDrive, checkDriveForUpdates, trySilentRefresh, debouncedSyncToDrive, restoreSession, isTokenReady } from './googleDrive.js';
 
 // --- View Templates ---
 import { authView }      from './views/auth.view.js';
@@ -115,24 +115,40 @@ initGapiWithRetry();
 let driveLastModified = null;
 let drivePollTimer = null;
 
-function startDrivePolling() {
-    stopDrivePolling();
-    drivePollTimer = setInterval(async () => {
-        if (!state.isLoggedIn) return;
-        // Try silent refresh if token stale — works in Safari, fails silently in PWA
-        trySilentRefresh();
+// Shared function to pull cloud changes
+async function pullCloudChanges() {
+    if (!state.isLoggedIn) return false;
+    try {
         const modifiedTime = await checkDriveForUpdates();
         if (modifiedTime && modifiedTime !== driveLastModified) {
             driveLastModified = modifiedTime;
             const cloudData = await loadFromDrive();
             if (cloudData) {
                 mergeCloudData(cloudData);
-                saveData();
+                saveLocally();
                 renderRecent();
-                console.log('[Drive] Real-time sync: merged changes');
+                // Refresh financial view if open
+                if (state.currentView === 'financial-view') {
+                    initFinancial(state, switchView, saveData);
+                }
+                console.log('[Drive] Cross-device sync: merged changes');
+                return true; // Data changed
             }
         }
-    }, 30000);
+    } catch (e) {
+        console.warn('[Drive] Sync pull error (silent):', e.message);
+    }
+    return false;
+}
+
+function startDrivePolling() {
+    stopDrivePolling();
+    drivePollTimer = setInterval(async () => {
+        const changed = await pullCloudChanges();
+        if (changed) {
+            window.showToast('📲 Data updated from another device');
+        }
+    }, 15000); // Check every 15s for responsive cross-device sync
 }
 
 function stopDrivePolling() {
@@ -141,6 +157,37 @@ function stopDrivePolling() {
         drivePollTimer = null;
     }
 }
+
+// --- Sync on tab focus (user switches back to this tab) ---
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && state.isLoggedIn) {
+        console.log('[Drive] Tab visible — checking for updates...');
+        const changed = await pullCloudChanges();
+        if (changed) {
+            window.showToast('📲 Data updated from another device');
+        }
+    }
+});
+
+// --- Sync when coming back online ---
+window.addEventListener('online', async () => {
+    if (state.isLoggedIn) {
+        console.log('[Drive] Back online — syncing...');
+        // Push local changes that may have been made offline
+        const payload = {
+            notes: state.notes,
+            todos: state.todos,
+            financialRecords: state.financialRecords,
+            trash: state.trash,
+            financial_records_data: JSON.parse(localStorage.getItem('financial_records_data')) || {}
+        };
+        const success = await syncToDrive(payload);
+        if (success) window.showToast('✅ Back online — data synced');
+
+        // Also pull any changes from cloud
+        await pullCloudChanges();
+    }
+});
 
 // --- State Management ---
 let state;
@@ -527,15 +574,16 @@ function saveData() {
     updateTrashBadge();
     showSavedStatus();
 
-    // Auto-Sync to Google Drive if logged in
+    // Auto-Sync to Google Drive if logged in — DEBOUNCED, no popup
     if (state.isLoggedIn) {
         const syncPayload = {
-            ...state,
+            notes: notesToSave,
+            todos: todosToSave,
+            financialRecords: state.financialRecords,
+            trash: state.trash,
             financial_records_data: JSON.parse(localStorage.getItem('financial_records_data')) || {}
         };
-        syncToDrive(syncPayload).then(success => {
-            if (success) console.log('[Drive] Auto-sync success');
-        });
+        debouncedSyncToDrive(syncPayload);
     }
 }
 
@@ -1717,6 +1765,44 @@ window.initApp = () => {
         homeView.classList.add('active');
         state.currentView = 'home-view';
         renderRecent();
+
+        // Auto-restore Google session for logged-in users
+        if (state.isLoggedIn) {
+            // Wait for gapi to fully initialize, then restore token
+            const tryRestore = async () => {
+                // Wait until gapi libraries are loaded
+                const waitForGapi = () => new Promise((resolve) => {
+                    const check = () => {
+                        if (typeof gapi !== 'undefined' && typeof google !== 'undefined') {
+                            resolve();
+                        } else {
+                            setTimeout(check, 300);
+                        }
+                    };
+                    check();
+                });
+
+                await waitForGapi();
+                // Make sure Drive client is initialized
+                await initDriveSync();
+                console.log('[Drive] Libraries ready, restoring session...');
+
+                const restored = await restoreSession();
+                if (restored) {
+                    console.log('[Drive] ✅ Session restored — starting sync');
+                    driveLastModified = null; // Force first pull
+                    startDrivePolling();
+                    // Immediate first pull
+                    await pullCloudChanges();
+                } else {
+                    console.warn('[Drive] ⚠️ Session restore failed — sync paused');
+                    window.showToast('Cloud sync paused — tap Sync in Settings to reconnect');
+                    // Update settings UI to show disconnected state
+                    refreshSettingsUI();
+                }
+            };
+            tryRestore();
+        }
     } else {
         console.log("App state: Showing login");
         loginView.classList.add('active');
@@ -1778,11 +1864,23 @@ window.showToast = (message, duration = 3000) => {
     const msgEl = document.getElementById('toast-message');
     if (!toast || !msgEl) return;
 
-    msgEl.textContent = message;
+    // Strip emojis and trim
+    const textWithoutEmojis = message.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '').trim();
+
+    msgEl.textContent = textWithoutEmojis;
     toast.classList.remove('hidden');
+    
+    // Slight delay to allow display:block to apply before animating opacity
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+    });
 
     clearTimeout(toast._hideTimer);
-    toast._hideTimer = setTimeout(() => toast.classList.add('hidden'), duration);
+    toast._hideTimer = setTimeout(() => {
+        toast.style.opacity = '0';
+        // Wait for transition to finish before hiding completely
+        setTimeout(() => toast.classList.add('hidden'), 300);
+    }, duration);
 };
 
 window.showLoading = () => {
@@ -1793,53 +1891,78 @@ window.hideLoading = () => {
 };
 
 window.handleDriveSync = (() => {
-    let syncFailed = false;
-
     return async () => {
-        if (state.isLoggedIn) {
-            const syncStatus = document.getElementById('sync-status-text');
-            const syncLabel = document.getElementById('sync-label');
-            if (syncStatus) syncStatus.classList.remove('hidden');
-
-            const payload = {
-                ...state,
-                financial_records_data: JSON.parse(localStorage.getItem('financial_records_data')) || {}
-            };
-
-            let success = false;
-            if (syncFailed) {
-                // Previous sync failed → try re-auth first
-                if (syncLabel) syncLabel.textContent = 'Reconnecting...';
-                try {
-                    const resp = await authenticateGoogle();
-                    if (resp) success = await syncToDrive(payload);
-                } catch (e) { console.warn('[Drive] Re-auth cancelled'); }
-                if (success) syncFailed = false;
-            } else {
-                if (syncLabel) syncLabel.textContent = 'Syncing...';
-                success = await syncToDrive(payload);
-                if (!success) syncFailed = true;
-            }
-
-            if (syncStatus) syncStatus.classList.add('hidden');
-            if (success) {
-                if (syncLabel) syncLabel.textContent = 'Synced';
-                window.showToast('Sync complete');
-            } else if (syncFailed) {
-                if (syncLabel) syncLabel.textContent = 'Session expired — tap to login';
-            } else {
-                if (syncLabel) syncLabel.textContent = 'Failed';
-                window.showToast('Sync failed');
-            }
-        } else {
+        if (!state.isLoggedIn) {
+            // Guest mode or not logged in → login first, then sync
             await window.handleGoogleLogin();
             refreshSettingsUI();
+            return;
+        }
+
+        // Already logged in — check if we have a working token
+        const syncStatus = document.getElementById('sync-status-text');
+        const syncLabel = document.getElementById('sync-label');
+        if (syncStatus) syncStatus.classList.remove('hidden');
+
+        const payload = buildSyncPayload();
+        let success = false;
+
+        if (!isTokenReady()) {
+            // Token expired/missing — re-auth (user-initiated, popup OK)
+            if (syncLabel) syncLabel.textContent = 'Reconnecting...';
+            try {
+                await authenticateGoogle();
+                success = await syncToDrive(payload);
+                // Restart polling after successful re-auth
+                if (success) {
+                    driveLastModified = null;
+                    startDrivePolling();
+                }
+            } catch (e) {
+                console.warn('[Drive] Re-auth cancelled');
+            }
+        } else {
+            if (syncLabel) syncLabel.textContent = 'Syncing...';
+            success = await syncToDrive(payload);
+        }
+
+        if (syncStatus) syncStatus.classList.add('hidden');
+        if (success) {
+            if (syncLabel) syncLabel.textContent = 'Synced';
+            window.showToast('✅ Sync complete');
+        } else {
+            if (syncLabel) syncLabel.textContent = 'Tap to reconnect';
+            window.showToast('Sync failed — try again');
         }
     };
 })();
 
+/** Build sync payload from current state + localStorage */
+function buildSyncPayload() {
+    return {
+        notes: state.notes,
+        todos: state.todos,
+        financialRecords: state.financialRecords,
+        trash: state.trash,
+        financial_records_data: JSON.parse(localStorage.getItem('financial_records_data')) || {}
+    };
+}
+
 window.handleGoogleLogin = async () => {
     window.showLoading();
+
+    // Capture current local data BEFORE login (important for guest→login flow)
+    const localDataBeforeLogin = {
+        notes: [...state.notes],
+        todos: [...state.todos],
+        financialRecords: [...state.financialRecords],
+        trash: [...state.trash],
+        financial_records_data: JSON.parse(localStorage.getItem('financial_records_data')) || {}
+    };
+    const hadLocalData = localDataBeforeLogin.notes.length > 0 ||
+                         localDataBeforeLogin.todos.length > 0 ||
+                         localDataBeforeLogin.financialRecords.length > 0;
+
     try {
         const resp = await authenticateGoogle();
         console.log('[Drive] Login Success:', resp);
@@ -1873,9 +1996,21 @@ window.handleGoogleLogin = async () => {
             mergeCloudData(cloudData);
         }
 
-        // Push merged data to Drive — withTokenRetry handles expired tokens
-        // If sync fails (e.g., Drive unreachable), data still saves locally via saveData()
-        saveData();
+        // If user had local data (guest mode data), make sure it gets pushed to Drive
+        if (hadLocalData) {
+            // Re-merge local data that existed before login
+            mergeCloudData(localDataBeforeLogin);
+            console.log('[Drive] Guest data merged — pushing to cloud...');
+        }
+
+        // Save locally first (instant), then push to Drive immediately (not debounced)
+        saveLocally();
+        const syncPayload = buildSyncPayload();
+        const syncSuccess = await syncToDrive(syncPayload);
+        if (syncSuccess) {
+            console.log('[Drive] Initial sync after login complete');
+            window.showToast('Data synced to Google Drive');
+        }
 
         // Start real-time polling
         driveLastModified = new Date().toISOString();
@@ -1908,9 +2043,11 @@ function clearAllLocalData() {
     localStorage.removeItem('userProfile');
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('hasSkippedLogin');
+    localStorage.removeItem('gapi_token');
 }
 
 window.skipLogin = () => {
+    // Clear everything for a fresh guest session
     clearAllLocalData();
     state.hasSkippedLogin = true;
     state.isLoggedIn = false;
@@ -1937,6 +2074,15 @@ window.handleSignOut = () => {
             state.isLoggedIn = false;
             state.hasSkippedLogin = false;
             
+            // Revoke token if possible so next login is fresh
+            try {
+                const token = gapi.client.getToken();
+                if (token) {
+                    google.accounts.oauth2.revoke(token.access_token);
+                    gapi.client.setToken(null);
+                }
+            } catch (e) { /* ignore */ }
+
             // Go back to login view
             switchView('login-view');
             

@@ -53,6 +53,8 @@ export function initFinancial(globalState, switchView, saveGlobalData) {
         const freshData = JSON.parse(localStorage.getItem('financial_records_data')) || {};
         freshData[recordId] = transactions;
         localStorage.setItem('financial_records_data', JSON.stringify(freshData));
+        // Trigger Drive sync via global saveData (debounced)
+        saveGlobalData();
     }
 
     window.renderFinancial = () => {

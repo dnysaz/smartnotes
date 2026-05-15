@@ -1032,18 +1032,16 @@ function renderRecent() {
                 });
                 
                 // 2. Add actual collaborators from the tracked list
-                if (item.collaborators && Array.isArray(item.collaborators)) {
-                    item.collaborators.forEach(c => {
-                        // Avoid duplicates if owner is also in collaborators list
-                        if (c.email && c.email === state.userProfile?.email) return; 
-                        if (c.picture && avatars.find(a => a.src === c.picture)) return;
-                        
-                        avatars.push({ 
-                            src: c.picture || '', 
-                            initial: c.name?.[0] || 'C' 
-                        });
+                const actualCollaborators = (item.collaborators && Array.isArray(item.collaborators)) 
+                    ? item.collaborators.filter(c => c.email !== state.userProfile?.email)
+                    : [];
+
+                actualCollaborators.forEach(c => {
+                    avatars.push({ 
+                        src: c.picture || '', 
+                        initial: c.name?.[0] || 'C' 
                     });
-                }
+                });
                 
                 // 3. If I am an adopter (not owner), ensure my avatar is in the stack
                 if (item.adoptedFrom && state.userProfile?.picture) {
@@ -1055,10 +1053,12 @@ function renderRecent() {
                     }
                 }
                 
-                // Collaborative if more than 1 person total
+                // STATUS LOGIC:
+                // If it's adopted (I am the adopter) OR has actual collaborators (I am the owner)
+                const isTrulyCollaborative = item.adoptedFrom || actualCollaborators.length > 0;
+                const statusLabel = isTrulyCollaborative ? 'Collaborative' : 'Shared';
+                const statusColor = isTrulyCollaborative ? 'text-blue-500' : 'text-gray-400';
                 const hasCollaborators = avatars.length > 1;
-                const statusLabel = hasCollaborators ? 'Collaborative' : 'Shared';
-                const statusColor = hasCollaborators ? 'text-blue-500' : 'text-gray-400';
 
                 const avatarStackHtml = hasCollaborators ? `
                     <div class="flex -space-x-2.5 items-center">

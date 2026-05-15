@@ -2224,8 +2224,7 @@ window.initApp = async () => {
                     // Update settings UI to show disconnected state
                     refreshSettingsUI();
                 }
-            };
-            tryRestore();
+            });
         }
     } else {
         console.log("App state: Showing login");

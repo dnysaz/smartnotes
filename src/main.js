@@ -1727,10 +1727,27 @@ async function renderShareMode() {
     if (hash.startsWith('#share=')) {
         const shareId = hash.replace('#share=', '');
         
-        // Show loading state in title
         const shareTitle = document.getElementById('share-title');
+
+        // Check if API key is missing
+        if (!env.GOOGLE_API_KEY) {
+            console.error("[Drive] Cannot fetch share: VITE_GOOGLE_API_KEY is missing in build.");
+            if (shareTitle) shareTitle.textContent = "Configuration Missing";
+            const contentContainer = document.getElementById('share-content');
+            if (contentContainer) {
+                contentContainer.innerHTML = `
+                    <div class="p-6 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm">
+                        <p class="font-bold mb-2">API Configuration Missing</p>
+                        <p>VITE_GOOGLE_API_KEY is not defined in the environment variables. Please check your Vercel settings and redeploy.</p>
+                    </div>
+                `;
+            }
+            return false;
+        }
+
+        // Show loading state in title
         if (shareTitle) shareTitle.textContent = "Loading shared content...";
-        
+
         // Hide main app
         const app = document.getElementById('app');
         if (app) app.classList.add('hidden');

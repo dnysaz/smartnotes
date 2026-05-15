@@ -31,9 +31,12 @@ export const env = {
  */
 export function checkEnv() {
     const required = ['VITE_GOOGLE_CLIENT_ID', 'VITE_GOOGLE_API_KEY'];
+    let missing = [];
     required.forEach(key => {
         if (!import.meta.env[key]) {
+            missing.push(key);
             console.warn('[ENV] Missing: ' + key + ' — Google features will be disabled.');
         }
     });
+    return missing;
 }

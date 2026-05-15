@@ -2174,6 +2174,21 @@ updateViewToggleUI();
 window.initApp = async () => {
     console.log("initApp running...");
     
+    // 0. Ensure GAPI is initialized BEFORE anything else
+    const waitForGapi = () => new Promise((resolve) => {
+        const check = () => {
+            if (typeof gapi !== 'undefined' && typeof google !== 'undefined') {
+                resolve();
+            } else {
+                setTimeout(check, 100);
+            }
+        };
+        check();
+    });
+
+    await waitForGapi();
+    await initDriveSync(); // This initializes gapi.client.drive
+
     // 1. Check if we are in share mode first
     if (await renderShareMode()) {
         console.log("Share mode active, skipping main app init");
@@ -2196,32 +2211,13 @@ window.initApp = async () => {
 
         // Auto-restore Google session for logged-in users
         if (state.isLoggedIn) {
-            // Wait for gapi to fully initialize, then restore token
-            const tryRestore = async () => {
-                // Wait until gapi libraries are loaded
-                const waitForGapi = () => new Promise((resolve) => {
-                    const check = () => {
-                        if (typeof gapi !== 'undefined' && typeof google !== 'undefined') {
-                            resolve();
-                        } else {
-                            setTimeout(check, 300);
-                        }
-                    };
-                    check();
-                });
-
-                await waitForGapi();
-                // Make sure Drive client is initialized
-                await initDriveSync();
-                console.log('[Drive] Libraries ready, restoring session...');
-
-                const restored = await restoreSession();
+            console.log('[Drive] Restoring session...');
+            restoreSession().then(restored => {
                 if (restored) {
                     console.log('[Drive] ✅ Session restored — starting sync');
-                    driveLastModified = null; // Force first pull
+                    driveLastModified = null;
                     startDrivePolling();
-                    // Immediate first pull
-                    await pullCloudChanges();
+                    pullCloudChanges();
                 } else {
                     console.warn('[Drive] ⚠️ Session restore failed — sync paused');
                     window.showToast('Cloud sync paused — tap Sync in Settings to reconnect');

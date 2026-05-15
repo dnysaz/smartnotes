@@ -105,12 +105,40 @@
     <!-- Public Share View (Hidden by default) -->
     <div id="share-public-view" class="hidden fixed inset-0 z-[5000] bg-white overflow-y-auto">
         <div class="max-w-2xl mx-auto px-8 py-12 flex flex-col min-h-full">
+            <div class="flex items-center justify-between mb-8">
+                <button onclick="location.href='/'" class="w-10 h-10 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <button id="share-menu-btn" class="w-10 h-10 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                </button>
+            </div>
+
             <h1 id="share-title" class="text-2xl font-black text-[#1D1D1F] mb-6 tracking-tight"></h1>
             <div id="share-content" class="text-lg text-gray-700 leading-relaxed border-t border-gray-100 pt-6 flex-1"></div>
             
             <div class="mt-auto pt-12 pb-2 flex flex-col items-center gap-2">
                 <p class="text-sm text-gray-400">Shared via Smart Note</p>
                 <button onclick="location.href='/'" class="text-blue-500 font-medium text-sm">Create your own</button>
+            </div>
+        </div>
+
+        <!-- Share Actions Bottom Sheet -->
+        <div id="share-actions-sheet" class="hidden fixed inset-0 z-[6000] bg-black/20 backdrop-blur-sm transition-opacity duration-300 opacity-0" onclick="window.closeShareActions()">
+            <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white rounded-t-[40px] p-6 translate-y-full transition-transform duration-500 ease-out" onclick="event.stopPropagation()">
+                <div class="w-12 h-1.5 bg-gray-100 rounded-full mx-auto mb-8"></div>
+                <div class="space-y-2">
+                    <button id="btn-adopt-share" class="w-full flex items-center gap-4 p-5 bg-[#F2F2F7] text-[#1D1D1F] rounded-3xl font-bold active:scale-95 transition-all">
+                        <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-blue-500 shadow-sm">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        </div>
+                        <div class="text-left">
+                            <p>Adopt this content</p>
+                            <p class="text-[10px] text-gray-400 font-normal">Save to your workspace and collaborate</p>
+                        </div>
+                    </button>
+                    <button onclick="window.closeShareActions()" class="w-full py-5 text-gray-400 font-bold">Cancel</button>
+                </div>
             </div>
         </div>
     </div>

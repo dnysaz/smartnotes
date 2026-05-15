@@ -476,12 +476,12 @@ export async function createPublicShare(shareData) {
             body: fileContent
         });
 
-        // 4. Make it public (anyone with link can read)
+        // 4. Make it collaborative (anyone with link can write)
         await gapi.client.drive.permissions.create({
             fileId: fileId,
             resource: {
                 type: 'anyone',
-                role: 'reader'
+                role: 'writer'
             }
         });
 
@@ -525,4 +525,23 @@ export async function fetchPublicShare(fileId) {
         if (attempt === 0) await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
     }
     return null;
+}
+/**
+ * Updates a shared file (used by collaborators who adopted the file).
+ */
+export async function updatePublicShare(fileId, shareData) {
+    try {
+        const fileContent = JSON.stringify(shareData);
+        await gapi.client.request({
+            path: `/upload/drive/v3/files/${fileId}`,
+            method: 'PATCH',
+            params: { uploadType: 'media' },
+            body: fileContent
+        });
+        console.log('[Drive] Updated public share:', fileId);
+        return true;
+    } catch (e) {
+        console.error("[Drive] Failed to update public share", e);
+        return false;
+    }
 }
